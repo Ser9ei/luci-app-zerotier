@@ -2,6 +2,10 @@
 LuCI application for configuring and managing ZeroTier on OpenWrt.
 Based on the package developed for the ImmortalWrt LuCI project.
 
+## Interface
+
+![luci-app-zerotier](docs/screenshot1.png)
+
 ## Credits & License
 Thanks to everyone who develops, maintains, reviews, tests, and contributes to luci-app-zerotier.
 
