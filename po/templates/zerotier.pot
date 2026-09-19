@@ -1,73 +1,78 @@
 msgid ""
 msgstr "Content-Type: text/plain; charset=UTF-8"
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:432
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:356
+msgid "16 hexadecimal characters."
+msgstr ""
+
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:379
 msgid "Allow DNS"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:433
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:380
 msgid "Allow ZeroTier to set DNS servers."
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:420
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:367
 msgid ""
 "Allow ZeroTier to set IP addresses and routes (local/private ranges only)."
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:425
-msgid "Allow ZeroTier to set global/public/not-private range IPs and routes."
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:372
+msgid ""
+"Allow ZeroTier to set global/public/non-private IP addresses and routes."
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:429
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:376
 msgid "Allow ZeroTier to set the default route on the system."
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:428
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:375
 msgid "Allow default route"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:440
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:387
 msgid "Allow forward"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:441
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:388
 msgid "Allow forward traffic from/to the ZeroTier network."
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:424
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:371
 msgid "Allow global IP/route"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:436
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:383
 msgid "Allow input"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:394
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:334
 msgid "Allow input traffic"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:437
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:384
 msgid "Allow input traffic from the ZeroTier network."
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:395
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:335
 msgid "Allow input traffic to the ZeroTier daemon."
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:419
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:366
 msgid "Allow managed IP/route"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:378
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:315
 msgid "Client secret"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:140
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:145
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:110
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:115
 msgid "Collecting data…"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:386
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:326
 msgid "Config path"
 msgstr ""
 
@@ -75,82 +80,65 @@ msgstr ""
 msgid "Configuration"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:390
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:330
 msgid "Copy config path"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:391
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:331
 msgid ""
 "Copy the contents of the persistent configuration directory to memory "
 "instead of linking it, this avoids writing to flash."
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:398
-msgid ""
-"Create or manage your ZeroTier network, and auth clients who could access."
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:338
+msgid "Create or manage your ZeroTier network and authorize clients."
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:293
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:238
 msgid "Disable"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:78
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:48
 msgid "Disabled"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:83
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:53
 msgid "Disabled in Global configuration"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:273
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:235
 msgid "Disabling ZeroTier service"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:263
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:373
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:411
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:226
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:351
 msgid "Enable"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:452
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:399
 msgid ""
 "Enable network address and port translation (NAT) for outbound traffic for "
 "this network."
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:78
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:48
 msgid "Enabled"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:243
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:223
 msgid "Enabling ZeroTier service"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:287
-msgid "Failed to disable ZeroTier service: %s"
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:137
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:164
+msgid "Failed to %s ZeroTier service: %s"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:257
-msgid "Failed to enable ZeroTier service: %s"
-msgstr ""
-
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:198
-msgid "Failed to restart ZeroTier service: %s"
-msgstr ""
-
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:169
-msgid "Failed to start ZeroTier service: %s"
-msgstr ""
-
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:227
-msgid "Failed to stop ZeroTier service: %s"
-msgstr ""
-
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:444
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:391
 msgid "Forward interfaces"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:371
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:310
 msgid "Global configuration"
 msgstr ""
 
@@ -158,159 +146,176 @@ msgstr ""
 msgid "Grant access to ZeroTier configuration"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:91
-msgid "IPv4 Address"
-msgstr ""
-
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:95
-msgid "IPv6 Address"
-msgstr ""
-
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:83
-msgid "Interface Name"
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:118
+msgid "IP Address"
 msgstr ""
 
 #: applications/luci-app-zerotier/root/usr/share/luci/menu.d/luci-app-zerotier.json:22
 msgid "Interface info"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:445
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:456
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:392
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:403
 msgid "Leave empty for all."
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:375
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:312
 msgid "Listen port"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:381
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:318
 msgid "Local config path"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:87
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:114
 msgid "MAC Address"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:99
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:122
 msgid "MTU"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:455
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:402
 msgid "Masquerade interfaces"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:451
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:398
 msgid "Masquerading"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:415
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:362
+msgid "Must be exactly 16 hexadecimal characters."
+msgstr ""
+
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:102
+msgid "Network Device"
+msgstr ""
+
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:355
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:98
 msgid "Network ID"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:81
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:138
 msgid "Network Interface Information"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:405
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:94
+msgid "Network Name"
+msgstr ""
+
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:345
 msgid "Network configuration"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:77
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:88
 msgid "No interface online."
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:399
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:339
 msgid "Open website"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:382
-msgid ""
-"Path of the optional file local.conf (see <a target=\"_blank\" "
-"href=\"%s\">documentation</a>)."
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:95
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:83
+msgid "OpenWrt ZeroTier documentation"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:387
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:319
+msgid ""
+"Path of the optional file local.conf (see <a target=\"_blank\" "
+"rel=\"noopener noreferrer\" href=\"https://docs.zerotier.com/config/#local-"
+"configuration-options\">"
+msgstr ""
+
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:327
 msgid ""
 "Persistent configuration directory (to keep other configurations such as "
 "controller or moons, etc.)."
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:204
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:126
+msgid "Received"
+msgstr ""
+
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:201
 msgid "Restart"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:185
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:198
 msgid "Restarting ZeroTier service"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:77
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:47
 msgid "Running"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:299
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:130
+msgid "Sent"
+msgstr ""
+
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:244
 msgid "Service Control"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:175
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:188
 msgid "Start"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:156
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:185
 msgid "Starting ZeroTier service"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:135
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:144
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:105
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:114
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:110
 msgid "Status"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:233
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:214
 msgid "Stop"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:77
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:47
 msgid "Stopped"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:214
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:211
 msgid "Stopping ZeroTier service"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:103
-msgid "Total Download"
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:106
+msgid "Type"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:107
-msgid "Total Upload"
-msgstr ""
-
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:30
-msgid "Unable to get interface %s info: %s."
-msgstr ""
-
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:15
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:69
 msgid "Unable to get interface info: %s."
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:359
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:295
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:298
 msgid "Unknown"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:139
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:109
 msgid "Version"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:122
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:73
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:90
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:75
 #: applications/luci-app-zerotier/root/usr/share/luci/menu.d/luci-app-zerotier.json:3
 msgid "ZeroTier"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:397
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:337
 msgid "ZeroTier Central"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:123
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:74
-msgid "ZeroTier is an open source, cross-platform and easy to use virtual LAN."
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:91
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/interface.js:77
+msgid "ZeroTier is an open source, cross-platform and easy to use virtual LAN"
+msgstr ""
+
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/config.js:322
+msgid "documentation"
 msgstr ""

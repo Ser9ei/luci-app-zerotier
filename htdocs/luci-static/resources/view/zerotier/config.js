@@ -6,86 +6,53 @@
 
 'use strict';
 'require form';
-'require fs';
 'require poll';
 'require rpc';
-'require uci';
 'require ui';
 'require view';
 'require tools.widgets as widgets';
 
-const callServiceList = rpc.declare({
-	object: 'service',
-	method: 'list',
-	params: ['name'],
+const callGetVersion = rpc.declare({
+	object: 'luci.zerotier',
+	method: 'getVersion',
 	expect: { '': {} }
 });
 
-function getServiceEnabled() {
-	return fs.exec('/etc/init.d/zerotier', ['enabled']).then(function(res) {
-			return res && res.code === 0;
-		})
-		.catch(function() {
-			return false;
-		});
-}
+const callGetInitStatus = rpc.declare({
+	object: 'luci.zerotier',
+	method: 'getInitStatus',
+	expect: { '': {} }
+});
+
+const callInitAction = rpc.declare({
+	object: 'luci.zerotier',
+	method: 'InitAction',
+	params: [ 'action' ],
+	expect: { '': {} }
+});
 
 function getServiceStatus() {
-	return Promise.all([
-		L.resolveDefault(callServiceList('zerotier'), {}),
-		getServiceEnabled()
-	]).then(function(results) {
-		const res = results[0];
-		const enabled = results[1];
-		const configEnabled = uci.get('zerotier', 'global', 'enabled') === '1';
-		let running = false;
-
-		try {
-			running = res['zerotier']['instances']['instance1']['running'] === true;
-		} catch (e) {
-			running = false;
-		}
+	return callGetInitStatus().then(function(res) {
+		const status = res?.zerotier || {};
 
 		return {
-			running: running,
-			enabled: enabled,
-			configEnabled: configEnabled
+			running: status.running === true,
+			enabled: status.enabled === true,
+			configEnabled: status.config_enabled === true
 		};
 	});
 }
 
-function execServiceAction(action) {
-	return fs.exec('/etc/init.d/zerotier', [action])
-		.then(function(res) {
-			if (!res || res.code !== 0) {
-				let msg = 'Service action failed: ' + action;
+function renderStatus(running, enabled, configEnabled) {
+	const status = running ? _('Running') : _('Stopped');
+	const autostart = enabled ? _('Enabled') : _('Disabled');
 
-				if (res && res.stderr)
-					msg += ': ' + res.stderr;
-
-				throw new Error(msg);
-			}
-
-			return res;
-		})
-		.catch(function(err) {
-			console.error('ZeroTier service action failed:', action, err);
-			throw err;
-		});
-}
-
-function renderStatus(isRunning, isEnabled, configEnabled) {
-	const status = isRunning ? _('Running') : _('Stopped');
-	const autostart = isEnabled ? _('Enabled') : _('Disabled');
-	let text = status + ' (' + autostart + ')';
-	const color = isRunning ? 'green' : 'red';
+	let text = `${status} (${autostart})`;
 
 	if (!configEnabled)
-		text += ' - ' + _('Disabled in Global configuration');
+		text += ` - ${_('Disabled in Global configuration')}`;
 
-	return E('span', {
-		style: 'color:' + color + '; font-weight:bold;'
-	}, text);
+	return E('span', {}, text);
 }
 
 function pollServiceStatus(expectRunning, callback) {
@@ -121,15 +88,17 @@ function pollServiceStatus(expectRunning, callback) {
 return view.extend({
 	render() {
 		const m = new form.Map('zerotier', _('ZeroTier'),
-			_('ZeroTier is an open source, cross-platform and easy to use virtual LAN.'));
+			_('ZeroTier is an open source, cross-platform and easy to use virtual LAN') +
+			' (' +
+			'<a target="_blank" rel="noopener noreferrer" ' +
+			'href="https://openwrt.org/docs/guide-user/services/vpn/zerotier">' +
+			_('OpenWrt ZeroTier documentation') +
+			'</a>).');
 
 		let s, o;
 
-		s = m.section(form.TypedSection);
+		s = m.section(form.TypedSection, 'status');
 		s.anonymous = true;
-		s.cfgsections = function() {
-			return [ 'status' ];
-		};
 
 		s.render = function() {
 			const section = E('div', { class: 'cbi-section' }, [
@@ -146,32 +115,75 @@ return view.extend({
 				E('div', { class: 'cbi-value-field' }, _('Collecting data…'))
 			]);
 
+			function performServiceAction(action, expectedRunning, message) {
+				ui.showModal(null, [
+					E('p', {
+						class: 'spinning'
+					}, message)
+				]);
+
+				return callInitAction(action)
+					.then(function() {
+						pollServiceStatus(expectedRunning, function() {
+							ui.hideModal();
+							getServiceStatus().then(updateStatus);
+						});
+					})
+					.catch(function(err) {
+						ui.hideModal();
+
+						ui.addNotification(null,
+							E('p', {},
+								_('Failed to %s ZeroTier service: %s')
+									.format(action, err.message)
+							),
+							'error'
+						);
+
+						getServiceStatus().then(updateStatus);
+					});
+			}
+
+			function setServiceAutostart(action, message) {
+				ui.showModal(null, [
+					E('p', {
+						class: 'spinning'
+					}, message)
+				]);
+
+				return callInitAction(action)
+					.then(function() {
+						return getServiceStatus();
+					})
+					.then(function(res) {
+						updateStatus(res);
+					})
+					.catch(function(err) {
+						ui.addNotification(null,
+							E('p', {},
+								_('Failed to %s ZeroTier service: %s')
+									.format(action, err.message)
+							),
+							'error'
+						);
+
+						return getServiceStatus().then(updateStatus);
+					})
+					.finally(function() {
+						ui.hideModal();
+					});
+			}
+
 			const btnStart = E('button', {
 				class: 'btn cbi-button cbi-button-apply',
 				disabled: true,
 				type: 'button',
 				click: function() {
-					ui.showModal(null, [
-						E('p', {
-							class: 'spinning'
-						}, _('Starting ZeroTier service'))
-					]);
-
-					execServiceAction('start')
-						.then(function() {
-							pollServiceStatus(true, function() {
-								ui.hideModal();
-								getServiceStatus().then(updateStatus);
-							});
-						})
-						.catch(function(err) {
-							ui.hideModal();
-							ui.addNotification(null,
-								E('p', {}, _('Failed to start ZeroTier service: %s').format(err.message)),
-								'error'
-							);
-							getServiceStatus().then(updateStatus);
-						});
+					return performServiceAction(
+						'start',
+						true,
+						_('Starting ZeroTier service')
+					);
 				}
 			}, _('Start'));
 
@@ -180,27 +192,11 @@ return view.extend({
 				disabled: true,
 				type: 'button',
 				click: function() {
-					ui.showModal(null, [
-						E('p', {
-							class: 'spinning'
-						}, _('Restarting ZeroTier service'))
-					]);
-
-					execServiceAction('restart')
-						.then(function() {
-							pollServiceStatus(true, function() {
-								ui.hideModal();
-								getServiceStatus().then(updateStatus);
-							});
-						})
-						.catch(function(err) {
-							ui.hideModal();
-							ui.addNotification(null,
-								E('p', {}, _('Failed to restart ZeroTier service: %s').format(err.message)),
-								'error'
-							);
-							getServiceStatus().then(updateStatus);
-						});
+					return performServiceAction(
+						'restart',
+						true,
+						_('Restarting ZeroTier service')
+					);
 				}
 			}, _('Restart'));
 
@@ -209,27 +205,11 @@ return view.extend({
 				disabled: true,
 				type: 'button',
 				click: function() {
-					ui.showModal(null, [
-						E('p', {
-							class: 'spinning'
-						}, _('Stopping ZeroTier service'))
-					]);
-
-					execServiceAction('stop')
-						.then(function() {
-							pollServiceStatus(false, function() {
-								ui.hideModal();
-								getServiceStatus().then(updateStatus);
-							});
-						})
-						.catch(function(err) {
-							ui.hideModal();
-							ui.addNotification(null,
-								E('p', {}, _('Failed to stop ZeroTier service: %s').format(err.message)),
-								'error'
-							);
-							getServiceStatus().then(updateStatus);
-						});
+					return performServiceAction(
+						'stop',
+						false,
+						_('Stopping ZeroTier service')
+					);
 				}
 			}, _('Stop'));
 
@@ -238,28 +218,10 @@ return view.extend({
 				disabled: true,
 				type: 'button',
 				click: function() {
-					ui.showModal(null, [
-						E('p', {
-							class: 'spinning'
-						}, _('Enabling ZeroTier service'))
-					]);
-
-					execServiceAction('enable')
-						.then(function() {
-							return getServiceStatus();
-						})
-						.then(function(res) {
-							ui.hideModal();
-							updateStatus(res);
-						})
-						.catch(function(err) {
-							ui.hideModal();
-							ui.addNotification(null,
-								E('p', {}, _('Failed to enable ZeroTier service: %s').format(err.message)),
-								'error'
-							);
-							getServiceStatus().then(updateStatus);
-						});
+					return setServiceAutostart(
+						'enable',
+						_('Enabling ZeroTier service')
+					);
 				}
 			}, _('Enable'));
 
@@ -268,28 +230,10 @@ return view.extend({
 				disabled: true,
 				type: 'button',
 				click: function() {
-					ui.showModal(null, [
-						E('p', {
-							class: 'spinning'
-						}, _('Disabling ZeroTier service'))
-					]);
-
-					execServiceAction('disable')
-						.then(function() {
-							return getServiceStatus();
-						})
-						.then(function(res) {
-							ui.hideModal();
-							updateStatus(res);
-						})
-						.catch(function(err) {
-							ui.hideModal();
-							ui.addNotification(null,
-								E('p', {}, _('Failed to disable ZeroTier service: %s').format(err.message)),
-								'error'
-							);
-							getServiceStatus().then(updateStatus);
-						});
+					return setServiceAutostart(
+						'disable',
+						_('Disabling ZeroTier service')
+					);
 				}
 			}, _('Disable'));
 
@@ -329,32 +273,26 @@ return view.extend({
 			function updateStatus(res) {
 				res = res || {};
 
+				const running = res.running === true;
+				const enabled = res.enabled === true;
+				const configEnabled = res.configEnabled === true;
+
 				status.lastElementChild.replaceChildren(
-					renderStatus(
-						res.running === true,
-						res.enabled === true,
-						res.configEnabled === true
-					)
+					renderStatus(running, enabled, configEnabled)
 				);
 
-				if (res.running === true) {
-					btnStart.disabled = true;
-					btnRestart.disabled = !res.configEnabled;
-					btnStop.disabled = false;
-				}
-				else {
-					btnStart.disabled = !res.configEnabled;
-					btnRestart.disabled = true;
-					btnStop.disabled = true;
-				}
+				btnStart.disabled = running || !configEnabled;
+				btnRestart.disabled = !running || !configEnabled;
+				btnStop.disabled = !running;
 
-				btnEnable.disabled = res.enabled === true;
-				btnDisable.disabled = res.enabled !== true;
+				btnEnable.disabled = enabled && configEnabled;
+				btnDisable.disabled = !enabled || !configEnabled;
 			}
 
-			fs.exec_direct('/usr/bin/zerotier-one', ['-v'])
+			callGetVersion()
 				.then(function(res) {
-					version.lastElementChild.textContent = res.trim();
+					version.lastElementChild.textContent =
+						res?.version ?? _('Unknown');
 				})
 				.catch(function() {
 					version.lastElementChild.textContent = _('Unknown');
@@ -371,8 +309,6 @@ return view.extend({
 
 		s = m.section(form.NamedSection, 'global', 'zerotier', _('Global configuration'));
 
-		o = s.option(form.Flag, 'enabled', _('Enable'));
-
 		o = s.option(form.Value, 'port', _('Listen port'));
 		o.datatype = 'port';
 
@@ -380,8 +316,11 @@ return view.extend({
 		o.password = true;
 
 		o = s.option(form.Value, 'local_conf_path', _('Local config path'),
-			_('Path of the optional file local.conf (see <a target="_blank" href="%s">documentation</a>).').format(
-				'https://docs.zerotier.com/config/#local-configuration-options'));
+			_('Path of the optional file local.conf ' +
+				'(see <a target="_blank" rel="noopener noreferrer" ' +
+				'href="https://docs.zerotier.com/config/#local-configuration-options">' +
+				_('documentation') +
+				'</a>).'));
 		o.value('/etc/zerotier.conf');
 
 		o = s.option(form.Value, 'config_path', _('Config path'),
@@ -396,11 +335,11 @@ return view.extend({
 			_('Allow input traffic to the ZeroTier daemon.'));
 
 		o = s.option(form.Button, '_panel', _('ZeroTier Central'),
-			_('Create or manage your ZeroTier network, and auth clients who could access.'));
+			_('Create or manage your ZeroTier network and authorize clients.'));
 		o.inputtitle = _('Open website');
 		o.inputstyle = 'apply';
 		o.onclick = function() {
-			window.open("https://my.zerotier.com/network", '_blank');
+			window.open('https://my.zerotier.com/network', '_blank', 'noopener,noreferrer');
 		};
 
 		s = m.section(form.GridSection, 'network', _('Network configuration'));
@@ -413,9 +352,16 @@ return view.extend({
 		o.default = o.enabled;
 		o.editable = true;
 
-		o = s.option(form.Value, 'id', _('Network ID'));
+		o = s.option(form.Value, 'id', _('Network ID'),
+			_('16 hexadecimal characters.'));
 		o.rmempty = false;
 		o.width = '20%';
+		o.maxlength = 16;
+		o.validate = function(section_id, value) {
+			if (!/^[0-9a-fA-F]{16}$/.test(value))
+				return _('Must be exactly 16 hexadecimal characters.');
+			return true;
+		};
 
 		o = s.option(form.Flag, 'allow_managed', _('Allow managed IP/route'),
 			_('Allow ZeroTier to set IP addresses and routes (local/private ranges only).'));
@@ -423,7 +369,7 @@ return view.extend({
 		o.editable = true;
 
 		o = s.option(form.Flag, 'allow_global', _('Allow global IP/route'),
-			_('Allow ZeroTier to set global/public/not-private range IPs and routes.'));
+			_('Allow ZeroTier to set global/public/non-private IP addresses and routes.'));
 		o.editable = true;
 
 		o = s.option(form.Flag, 'allow_default', _('Allow default route'),

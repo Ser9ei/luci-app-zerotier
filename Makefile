@@ -5,11 +5,17 @@
 
 include $(TOPDIR)/rules.mk
 
-LUCI_TITLE:=LuCI for Zerotier
+PKG_NAME:=luci-app-zerotier
+PKG_MAINTAINER:=Ser9ei
+PKG_VERSION:=1.0.0
+PKG_RELEASE:=1
+PKG_PO_VERSION:=$(PKG_VERSION)-r$(PKG_RELEASE)
+
+LUCI_TITLE:=LuCI for ZeroTier
+LUCI_URL:=https://github.com/Ser9ei/luci-app-zerotier/
+LUCI_DESCRIPTION:=Provides Web UI for ZeroTier Service.
 LUCI_DEPENDS:=+zerotier
 
 include $(TOPDIR)/feeds/luci/luci.mk
 
 # call BuildPackage - OpenWrt buildroot signature
-
-
