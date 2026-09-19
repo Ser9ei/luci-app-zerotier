@@ -1,116 +1,141 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  *
  * Copyright (C) 2022 ImmortalWrt.org
+ * Copyright (C) 2026 Ser9ei
  */
 
 'use strict';
-'require fs';
+'require rpc';
 'require ui';
 'require view';
 
+function formatBytes(bytes) {
+	if (bytes === null || bytes === undefined || bytes === '')
+		return '0 B';
+
+	const value = Number(bytes);
+
+	if (!Number.isFinite(value))
+		return '0 B';
+
+	const units = [ 'B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB' ];
+	let unit = 0;
+	let size = value;
+
+	while (size >= 1024 && unit < units.length - 1) {
+		size /= 1024;
+		unit++;
+	}
+
+	return unit === 0
+		? `${Math.round(size)} B`
+		: `${size.toFixed(1)} ${units[unit]}`;
+}
+
+const callGetInterfaces = rpc.declare({
+	object: 'luci.zerotier',
+	method: 'getInterfaces',
+	expect: {
+		'': {}
+	}
+});
+
 return view.extend({
 	load() {
-		return fs.exec('/sbin/ifconfig').then(function(res) {
-			if (res.code !== 0 || !res.stdout || res.stdout.trim() === '') {
-				ui.addNotification(null, E('p', {}, _('Unable to get interface info: %s.').format(res.message)));
-				return '';
-			}
+		return callGetInterfaces().then(function(res) {
+			res = res || {};
 
-			const interfaces = res.stdout.match(/zt[a-z0-9]+/g);
-			if (!interfaces || interfaces.length === 0)
-				return 'No interface online.';
+			const zerotier = res.zerotier || {};
+			const interfaces = zerotier.interfaces || [];
 
-			const promises = interfaces.map(function(name) {
-				return fs.exec('/sbin/ifconfig', [name]);
+			if (!Array.isArray(interfaces))
+				return [];
+
+			return interfaces.map(function(interfaceData) {
+				return {
+					network_id: interfaceData.network_id,
+					name: interfaceData.name,
+					type: interfaceData.type,
+					status: interfaceData.status,
+					device_name: interfaceData.device_name,
+					mac: interfaceData.mac,
+					ip_address: interfaceData.ip_address,
+					mtu: interfaceData.mtu,
+					rx_bytes: interfaceData.rx_bytes,
+					tx_bytes: interfaceData.tx_bytes
+				};
 			});
-
-			return Promise.all(promises).then(function(results) {
-				const data = results.map(function(res, index) {
-					if (res.code !== 0 || !res.stdout || res.stdout.trim() === '') {
-						ui.addNotification(null, E('p', {}, _('Unable to get interface %s info: %s.').format(interfaces[index], res.message)));
-						return null;
-					}
-					return {
-						name: interfaces[index],
-						stdout: res.stdout.trim()
-					};
-				}).filter(Boolean);
-
-				return data.map(function(info) {
-					let lines = info.stdout.split('\n');
-					let parsedInfo = {
-						name: info.name
-					};
-
-					lines.forEach(function(line) {
-						if (line.includes('HWaddr')) {
-							parsedInfo.mac = line.split('HWaddr')[1].trim().split(' ')[0];
-						} else if (line.includes('inet addr:')) {
-							parsedInfo.ipv4 = line.split('inet addr:')[1].trim().split(' ')[0];
-						} else if (line.includes('inet6 addr:')) {
-							parsedInfo.ipv6 = line.split('inet6 addr:')[1].trim().split('/')[0];
-						} else if (line.includes('MTU:')) {
-							parsedInfo.mtu = line.split('MTU:')[1].trim().split(' ')[0];
-						} else if (line.includes('RX bytes:')) {
-							let rxMatch = line.match(/RX bytes:\d+ \(([\d.]+\s*[a-zA-Z]+)\)/);
-							if (rxMatch && rxMatch[1]) {
-								parsedInfo.rxBytes = rxMatch[1];
-							}
-							let txMatch = line.match(/TX bytes:\d+ \(([\d.]+\s*[a-zA-Z]+)\)/);
-							if (txMatch && txMatch[1]) {
-								parsedInfo.txBytes = txMatch[1];
-							}
-						}
-					});
-
-					return parsedInfo;
-				});
-			});
+		}).catch(function(err) {
+			ui.addNotification(null, E('p', {}, _('Unable to get interface info: %s.').format(err.message)));
+			return [];
 		});
 	},
 
 	render(data) {
 		const title = E('h2', {class: 'content'}, _('ZeroTier'));
-		const desc = E('div', {class: 'cbi-map-descr'}, _('ZeroTier is an open source, cross-platform and easy to use virtual LAN.'));
+		const desc = E('div', {class: 'cbi-map-descr'}, 
+			[_('ZeroTier is an open source, cross-platform and easy to use virtual LAN'),
+			' (',
+			E('a', {
+				target: '_blank',
+				rel: 'noopener noreferrer',
+				href: 'https://openwrt.org/docs/guide-user/services/vpn/zerotier'
+			}, _('OpenWrt ZeroTier documentation')),
+			').'
+		]);
 
-		if (!Array.isArray(data)) {
+		if (!Array.isArray(data) || data.length === 0) {
 			return E('div', {}, [title, desc, E('div', {}, _('No interface online.'))]);
 		}
-		const rows = data.flatMap(function(interfaceData) {
-			return [
-				E('th', {class: 'th', colspan: '2'}, _('Network Interface Information')),
+
+		const tables = data.map(function(interfaceData, index) {
+			const rows = [
 				E('tr', {class: 'tr'}, [
-					E('td', {class: 'td left', width: '25%'}, _('Interface Name')),
-					E('td', {class: 'td left', width: '25%'}, interfaceData.name)
+					E('th', {class: 'th left'}, _('Network Name')),
+					E('td', {class: 'td left'}, interfaceData.name)
 				]),
 				E('tr', {class: 'tr'}, [
-					E('td', {class: 'td left', width: '25%'}, _('MAC Address')),
-					E('td', {class: 'td left', width: '25%'}, interfaceData.mac)
+					E('th', {class: 'th left'}, _('Network ID')),
+					E('td', {class: 'td left'}, interfaceData.network_id)
 				]),
 				E('tr', {class: 'tr'}, [
-					E('td', {class: 'td left', width: '25%'}, _('IPv4 Address')),
-					E('td', {class: 'td left', width: '25%'}, interfaceData.ipv4)
+					E('th', {class: 'th left'}, _('Network Device')),
+					E('td', {class: 'td left'}, interfaceData.device_name)
 				]),
 				E('tr', {class: 'tr'}, [
-					E('td', {class: 'td left', width: '25%'}, _('IPv6 Address')),
-					E('td', {class: 'td left', width: '25%'}, interfaceData.ipv6)
+					E('th', {class: 'th left'}, _('Type')),
+					E('td', {class: 'td left'}, interfaceData.type)
 				]),
 				E('tr', {class: 'tr'}, [
-					E('td', {class: 'td left', width: '25%'}, _('MTU')),
-					E('td', {class: 'td left', width: '25%'}, interfaceData.mtu)
+					E('th', {class: 'th left'}, _('Status')),
+					E('td', {class: 'td left'}, interfaceData.status)
 				]),
 				E('tr', {class: 'tr'}, [
-					E('td', {class: 'td left', width: '25%'}, _('Total Download')),
-					E('td', {class: 'td left', width: '25%'}, interfaceData.rxBytes)
+					E('th', {class: 'th left'}, _('MAC Address')),
+					E('td', {class: 'td left'}, interfaceData.mac)
 				]),
 				E('tr', {class: 'tr'}, [
-					E('td', {class: 'td left', width: '25%'}, _('Total Upload')),
-					E('td', {class: 'td left', width: '25%'}, interfaceData.txBytes)
+					E('th', {class: 'th left'}, _('IP Address')),
+					E('td', {class: 'td left'}, interfaceData.ip_address)
+				]),
+				E('tr', {class: 'tr'}, [
+					E('th', {class: 'th left'}, _('MTU')),
+					E('td', {class: 'td left'}, interfaceData.mtu)
+				]),
+				E('tr', {class: 'tr'}, [
+					E('th', {class: 'th left'}, _('Received')),
+					E('td', {class: 'td left'}, formatBytes(interfaceData.rx_bytes))
+				]),
+				E('tr', {class: 'tr'}, [
+					E('th', {class: 'th left'}, _('Sent')),
+					E('td', {class: 'td left'}, formatBytes(interfaceData.tx_bytes))
 				])
 			];
+
+			return E('table', {class: 'table', style: index > 0 ? 'margin-top: 1em' : null}, rows);
 		});
 
-		return E('div', {}, [title, desc, E('table', { 'class': 'table' }, rows)]);
+		return E('div', {}, [title,desc,E('div', {class: 'cbi-section'}, [E('h3', {}, _('Network Interface Information')), ...tables])]);
 	},
 
 	handleSaveApply: null,

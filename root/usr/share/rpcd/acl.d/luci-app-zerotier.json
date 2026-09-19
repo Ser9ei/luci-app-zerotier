@@ -2,22 +2,19 @@
 	"luci-app-zerotier": {
 		"description": "Grant access to ZeroTier configuration",
 		"read": {
-			"file": {
-				"/sbin/ifconfig": [ "exec" ],
-				"/etc/init.d/zerotier enabled": [ "exec" ],
-				"/etc/init.d/zerotier start": [ "exec" ],
-				"/etc/init.d/zerotier stop": [ "exec" ],
-				"/etc/init.d/zerotier restart": [ "exec" ],
-				"/etc/init.d/zerotier enable": [ "exec" ],
-				"/etc/init.d/zerotier disable": [ "exec" ],
-				"/usr/bin/zerotier-one -v": [ "exec" ]
-			},
 			"ubus": {
-				"service": [ "list" ]
+				"luci.zerotier": [
+					"getVersion",
+					"getInitStatus",
+					"getInterfaces"
+				]
 			},
 			"uci": [ "zerotier" ]
 		},
 		"write": {
+			"ubus": {
+				"luci.zerotier": [ "InitAction"	]
+			},
 			"uci": [ "zerotier" ]
 		}
 	}

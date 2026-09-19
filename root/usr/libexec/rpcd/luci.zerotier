@@ -1,0 +1,218 @@
+#!/bin/sh
+# Copyright (C) 2026 Ser9ei
+#
+# TechRef: https://openwrt.org/docs/techref/rpcd
+#
+# Tests:
+#   ubus -v list luci.zerotier
+#   ubus -S call luci.zerotier getVersion
+#   ubus -S call luci.zerotier getInitStatus
+#   ubus -S call luci.zerotier InitAction '{"action":"restart"}'
+#   ubus -S call luci.zerotier getInterfaces
+
+. /usr/share/libubox/jshn.sh
+
+readonly INIT_FILE="/etc/init.d/zerotier"
+readonly CONFIG="zerotier"
+readonly ZEROTIER_ONE="/usr/bin/zerotier-one"
+readonly ZEROTIER_CLI="/usr/bin/zerotier-cli"
+readonly LOG_TAG="rpcd:luci.zerotier"
+
+log()
+{
+	[ -n "$1" ] || return 0
+	case "$2" in
+		err) logger -t "$LOG_TAG" -p daemon.err -- "$1" ;;
+		war) logger -t "$LOG_TAG" -p daemon.warn -- "$1" ;;
+		*) logger -t "$LOG_TAG" -p daemon.info -- "$1" ;;
+	esac
+}
+
+json_error()
+{
+	json_init
+	json_add_boolean "result" 0
+	json_add_string "error" "$1"
+	json_dump
+	json_cleanup
+}
+
+is_executable() { [ -x "$1" ]; }
+is_init_enabled() { "$INIT_FILE" enabled >/dev/null 2>&1; }
+is_config_enabled() { [ "$(uci -q get "${CONFIG}.global.enabled")" = "1" ]; }
+is_running() { "$INIT_FILE" status >/dev/null 2>&1; }
+
+init_action()
+{
+	if ! is_executable "$INIT_FILE"; then
+		log "Init script not found or not executable: $INIT_FILE" err
+		return 1
+	fi
+
+	case "$1" in
+		start)
+			"$INIT_FILE" start >/dev/null 2>&1
+			;;
+		stop)
+			"$INIT_FILE" stop >/dev/null 2>&1
+			;;
+		restart)
+			"$INIT_FILE" restart >/dev/null 2>&1
+			;;
+		enable)
+			"$INIT_FILE" enable >/dev/null 2>&1 || return 1
+			uci -q set "${CONFIG}.global.enabled=1" || return 1
+			uci -q commit "$CONFIG" || return 1
+			;;
+		disable)
+			"$INIT_FILE" disable >/dev/null 2>&1 || return 1
+			;;
+		*)
+			log "Unsupported init action: $1" war
+			return 1
+			;;
+	esac
+}
+
+get_version()
+{
+	local _version
+	is_executable "$ZEROTIER_ONE" && _version="$("$ZEROTIER_ONE" -v 2>/dev/null)" || _version="ZeroTier not found"
+
+	json_init
+	json_add_string "version" "${_version:-Unknown}"
+	json_dump
+	json_cleanup
+}
+
+get_init_status()
+{
+	if ! is_executable "$INIT_FILE"; then
+		log "Init script not found or not executable: $INIT_FILE" err
+		json_error "Init script not found"
+		return 1
+	fi
+
+	json_init
+	json_add_object "zerotier"
+
+	is_running && json_add_boolean "running" 1 || json_add_boolean "running" 0
+	is_init_enabled && json_add_boolean "enabled" 1 || json_add_boolean "enabled" 0
+	is_config_enabled && json_add_boolean "config_enabled" 1 || json_add_boolean "config_enabled" 0
+
+	json_close_object
+	json_dump
+	json_cleanup
+}
+
+get_interfaces()
+{
+	if ! is_executable "$ZEROTIER_CLI"; then
+		log "ZeroTier CLI not found or not executable: $ZEROTIER_CLI" err
+		json_error "ZeroTier CLI not found"
+		return 1
+	fi
+
+	local _networks
+	local _code _command
+	local _id _name _type _status _portDeviceName
+	local _mac _mtu _assignedAddresses _ip_address _rx_bytes _tx_bytes
+
+	_networks="$("$ZEROTIER_CLI" listnetworks 2>/dev/null)"
+	if [ $? -ne 0 -o -z "$_networks" ]; then
+		log "Failed to get ZeroTier network list" err
+		json_error "Failed to get ZeroTier network list"
+		return 1
+	fi
+
+	json_init
+	json_add_object "zerotier"
+	json_add_array "interfaces"
+
+	while read -r _code _command _id _name _mac _status _type _portDeviceName _assignedAddresses; do
+		[ "$_code" = "200" ] || continue
+		[ "$_command" = "listnetworks" ] || continue
+		[ -n "$_portDeviceName" ] || continue
+		[ -d "/sys/class/net/$_portDeviceName" ] || continue
+
+		_mtu=""
+		_rx_bytes=""
+		_tx_bytes=""
+
+		_mtu="$(cat "/sys/class/net/${_portDeviceName}/mtu" 2>/dev/null)"
+		_rx_bytes="$(cat "/sys/class/net/${_portDeviceName}/statistics/rx_bytes" 2>/dev/null)"
+		_tx_bytes="$(cat "/sys/class/net/${_portDeviceName}/statistics/tx_bytes" 2>/dev/null)"
+
+		_ip_address="$(printf '%s\n' "$_assignedAddresses" | sed 's#[[:space:]]*/[^[:space:]]*##g')"
+
+		json_add_object ""
+		json_add_string "network_id" "$_id"
+		json_add_string "name" "$_name"
+		json_add_string "type" "$_type"
+		json_add_string "status" "$_status"
+		json_add_string "device_name" "$_portDeviceName"
+		json_add_string "mac" "$_mac"
+		json_add_string "ip_address" "$_ip_address"
+		json_add_string "mtu" "$_mtu"
+		json_add_string "rx_bytes" "$_rx_bytes"
+		json_add_string "tx_bytes" "$_tx_bytes"
+		json_close_object
+	done <<EOF
+$_networks
+EOF
+
+	json_close_array
+	json_close_object
+	json_dump
+	json_cleanup
+}
+
+
+case "$1" in
+	list)
+		json_init
+
+		json_add_object "getVersion"
+		json_close_object
+
+		json_add_object "getInitStatus"
+		json_close_object
+
+		json_add_object "InitAction"
+		json_add_string "action" "action"
+		json_close_object
+
+		json_add_object "getInterfaces"
+		json_close_object
+
+		json_dump
+		json_cleanup
+		;;
+	call)
+		case "$2" in
+			getVersion)
+				get_version
+				;;
+			getInitStatus)
+				get_init_status
+				;;
+			InitAction)
+				read -r input
+				json_load "$input"
+				json_get_var action "action"
+				json_cleanup
+
+				init_action "$action" && \
+					print_json_bool "result" 1 || \
+					print_json_bool "result" 0
+				;;
+			getInterfaces)
+				get_interfaces
+				;;
+			*)
+				json_error "Unknown method: $2"
+				exit 1
+				;;
+		esac
+		;;
+esac
