@@ -5,15 +5,17 @@
 			"ubus": {
 				"luci.zerotier": [
 					"getVersion",
-					"getInitStatus",
+					"getGlobalEnabled",
 					"getInterfaces"
-				]
+				],
+				"rc": [ "list" ]
 			},
 			"uci": [ "zerotier" ]
 		},
 		"write": {
 			"ubus": {
-				"luci.zerotier": [ "InitAction"	]
+				"luci.zerotier": [ "setGlobalEnabled" ],
+				"rc": [ "init" ]
 			},
 			"uci": [ "zerotier" ]
 		}

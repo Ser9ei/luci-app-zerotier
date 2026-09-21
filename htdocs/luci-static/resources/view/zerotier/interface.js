@@ -35,9 +35,7 @@ function formatBytes(bytes) {
 const callGetInterfaces = rpc.declare({
 	object: 'luci.zerotier',
 	method: 'getInterfaces',
-	expect: {
-		'': {}
-	}
+	expect: { '': {} }
 });
 
 return view.extend({
@@ -48,32 +46,47 @@ return view.extend({
 			const zerotier = res.zerotier || {};
 			const interfaces = zerotier.interfaces || [];
 
-			if (!Array.isArray(interfaces))
-				return [];
-
-			return interfaces.map(function(interfaceData) {
-				return {
-					network_id: interfaceData.network_id,
-					name: interfaceData.name,
-					type: interfaceData.type,
-					status: interfaceData.status,
-					device_name: interfaceData.device_name,
-					mac: interfaceData.mac,
-					ip_address: interfaceData.ip_address,
-					mtu: interfaceData.mtu,
-					rx_bytes: interfaceData.rx_bytes,
-					tx_bytes: interfaceData.tx_bytes
-				};
-			});
+			return Array.isArray(interfaces) ? interfaces : [];
 		}).catch(function(err) {
 			ui.addNotification(null, E('p', {}, _('Unable to get interface info: %s.').format(err.message)));
 			return [];
 		});
 	},
 
+	render_interface: function(interfaceData, index, isLast) {
+		const fields = [
+			[_('Network Name'), interfaceData.name],
+			[_('Network ID'), interfaceData.network_id],
+			[_('Network Device'), interfaceData.device_name],
+			[_('Type'), interfaceData.type],
+			[_('Status'), interfaceData.status],
+			[_('MAC Address'), interfaceData.mac],
+			[_('IP Address'), interfaceData.ip_address],
+			[_('MTU'), interfaceData.mtu],
+			[_('Received'), formatBytes(interfaceData.rx_bytes)],
+			[_('Sent'), formatBytes(interfaceData.tx_bytes)]
+		];
+
+		const rows = fields.map(function(field) {
+			return E('tr', {class: 'tr'}, [
+				E('td', {class: 'td left', 'width': '25%'}, field[0]),
+				E('td', {class: 'td left', 'width': '25%'}, field[1])
+			]);
+		});
+
+		if (!isLast) {
+			rows.push(E('tr', { class: 'tr' }, [E('td', {class: 'td', colspan: '2'}, '')]));
+		}
+
+		return E('table', {
+			class: 'table',
+			style: index > 0 ? 'margin-top: 1em' : null
+		}, rows);
+	},
+
 	render(data) {
 		const title = E('h2', {class: 'content'}, _('ZeroTier'));
-		const desc = E('div', {class: 'cbi-map-descr'}, 
+		const desc = E('div', {class: 'cbi-map-descr'},
 			[_('ZeroTier is an open source, cross-platform and easy to use virtual LAN'),
 			' (',
 			E('a', {
@@ -89,51 +102,8 @@ return view.extend({
 		}
 
 		const tables = data.map(function(interfaceData, index) {
-			const rows = [
-				E('tr', {class: 'tr'}, [
-					E('th', {class: 'th left'}, _('Network Name')),
-					E('td', {class: 'td left'}, interfaceData.name)
-				]),
-				E('tr', {class: 'tr'}, [
-					E('th', {class: 'th left'}, _('Network ID')),
-					E('td', {class: 'td left'}, interfaceData.network_id)
-				]),
-				E('tr', {class: 'tr'}, [
-					E('th', {class: 'th left'}, _('Network Device')),
-					E('td', {class: 'td left'}, interfaceData.device_name)
-				]),
-				E('tr', {class: 'tr'}, [
-					E('th', {class: 'th left'}, _('Type')),
-					E('td', {class: 'td left'}, interfaceData.type)
-				]),
-				E('tr', {class: 'tr'}, [
-					E('th', {class: 'th left'}, _('Status')),
-					E('td', {class: 'td left'}, interfaceData.status)
-				]),
-				E('tr', {class: 'tr'}, [
-					E('th', {class: 'th left'}, _('MAC Address')),
-					E('td', {class: 'td left'}, interfaceData.mac)
-				]),
-				E('tr', {class: 'tr'}, [
-					E('th', {class: 'th left'}, _('IP Address')),
-					E('td', {class: 'td left'}, interfaceData.ip_address)
-				]),
-				E('tr', {class: 'tr'}, [
-					E('th', {class: 'th left'}, _('MTU')),
-					E('td', {class: 'td left'}, interfaceData.mtu)
-				]),
-				E('tr', {class: 'tr'}, [
-					E('th', {class: 'th left'}, _('Received')),
-					E('td', {class: 'td left'}, formatBytes(interfaceData.rx_bytes))
-				]),
-				E('tr', {class: 'tr'}, [
-					E('th', {class: 'th left'}, _('Sent')),
-					E('td', {class: 'td left'}, formatBytes(interfaceData.tx_bytes))
-				])
-			];
-
-			return E('table', {class: 'table', style: index > 0 ? 'margin-top: 1em' : null}, rows);
-		});
+			return this.render_interface(interfaceData, index, index === data.length - 1);
+		}, this);
 
 		return E('div', {}, [title,desc,E('div', {class: 'cbi-section'}, [E('h3', {}, _('Network Interface Information')), ...tables])]);
 	},

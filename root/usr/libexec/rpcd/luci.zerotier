@@ -6,13 +6,12 @@
 # Tests:
 #   ubus -v list luci.zerotier
 #   ubus -S call luci.zerotier getVersion
-#   ubus -S call luci.zerotier getInitStatus
-#   ubus -S call luci.zerotier InitAction '{"action":"restart"}'
+#   ubus -S call luci.zerotier getGlobalEnabled
+#   ubus -S call luci.zerotier setGlobalEnabled
 #   ubus -S call luci.zerotier getInterfaces
 
 . /usr/share/libubox/jshn.sh
 
-readonly INIT_FILE="/etc/init.d/zerotier"
 readonly CONFIG="zerotier"
 readonly ZEROTIER_ONE="/usr/bin/zerotier-one"
 readonly ZEROTIER_CLI="/usr/bin/zerotier-cli"
@@ -38,40 +37,12 @@ json_error()
 }
 
 is_executable() { [ -x "$1" ]; }
-is_init_enabled() { "$INIT_FILE" enabled >/dev/null 2>&1; }
 is_config_enabled() { [ "$(uci -q get "${CONFIG}.global.enabled")" = "1" ]; }
-is_running() { "$INIT_FILE" status >/dev/null 2>&1; }
 
-init_action()
+set_config_enabled()
 {
-	if ! is_executable "$INIT_FILE"; then
-		log "Init script not found or not executable: $INIT_FILE" err
-		return 1
-	fi
-
-	case "$1" in
-		start)
-			"$INIT_FILE" start >/dev/null 2>&1
-			;;
-		stop)
-			"$INIT_FILE" stop >/dev/null 2>&1
-			;;
-		restart)
-			"$INIT_FILE" restart >/dev/null 2>&1
-			;;
-		enable)
-			"$INIT_FILE" enable >/dev/null 2>&1 || return 1
-			uci -q set "${CONFIG}.global.enabled=1" || return 1
-			uci -q commit "$CONFIG" || return 1
-			;;
-		disable)
-			"$INIT_FILE" disable >/dev/null 2>&1 || return 1
-			;;
-		*)
-			log "Unsupported init action: $1" war
-			return 1
-			;;
-	esac
+	uci -q set "${CONFIG}".global.enabled=1 || return 1
+	uci -q commit "$CONFIG" || return 1
 }
 
 get_version()
@@ -85,24 +56,23 @@ get_version()
 	json_cleanup
 }
 
-get_init_status()
+get_global_enabled()
 {
-	if ! is_executable "$INIT_FILE"; then
-		log "Init script not found or not executable: $INIT_FILE" err
-		json_error "Init script not found"
-		return 1
-	fi
-
 	json_init
-	json_add_object "zerotier"
-
-	is_running && json_add_boolean "running" 1 || json_add_boolean "running" 0
-	is_init_enabled && json_add_boolean "enabled" 1 || json_add_boolean "enabled" 0
-	is_config_enabled && json_add_boolean "config_enabled" 1 || json_add_boolean "config_enabled" 0
-
-	json_close_object
+	is_config_enabled && json_add_boolean "enabled" 1 || json_add_boolean "enabled" 0
 	json_dump
 	json_cleanup
+}
+
+set_global_enabled()
+{
+	local _enabled=1
+
+	if ! is_config_enabled; then
+		set_config_enabled || _enabled=0
+	fi
+	print_json_bool "result" $_enabled
+	return $((1-_enabled))
 }
 
 get_interfaces()
@@ -113,14 +83,8 @@ get_interfaces()
 		return 1
 	fi
 
-	local _networks
-	local _code _command
-	local _id _name _type _status _portDeviceName
-	local _mac _mtu _assignedAddresses _ip_address _rx_bytes _tx_bytes
-
-	_networks="$("$ZEROTIER_CLI" listnetworks 2>/dev/null)"
+	local _networks="$("$ZEROTIER_CLI" listnetworks 2>/dev/null)"
 	if [ $? -ne 0 -o -z "$_networks" ]; then
-		log "Failed to get ZeroTier network list" err
 		json_error "Failed to get ZeroTier network list"
 		return 1
 	fi
@@ -128,6 +92,10 @@ get_interfaces()
 	json_init
 	json_add_object "zerotier"
 	json_add_array "interfaces"
+
+	local _code _command
+	local _id _name _type _status _portDeviceName
+	local _mac _mtu _assignedAddresses _ip_address _rx_bytes _tx_bytes
 
 	while read -r _code _command _id _name _mac _status _type _portDeviceName _assignedAddresses; do
 		[ "$_code" = "200" ] || continue
@@ -167,7 +135,6 @@ EOF
 	json_cleanup
 }
 
-
 case "$1" in
 	list)
 		json_init
@@ -175,11 +142,10 @@ case "$1" in
 		json_add_object "getVersion"
 		json_close_object
 
-		json_add_object "getInitStatus"
+		json_add_object "getGlobalEnabled"
 		json_close_object
 
-		json_add_object "InitAction"
-		json_add_string "action" "action"
+		json_add_object "setGlobalEnabled"
 		json_close_object
 
 		json_add_object "getInterfaces"
@@ -193,18 +159,12 @@ case "$1" in
 			getVersion)
 				get_version
 				;;
-			getInitStatus)
-				get_init_status
+			getGlobalEnabled)
+				get_global_enabled
 				;;
-			InitAction)
-				read -r input
-				json_load "$input"
-				json_get_var action "action"
+			setGlobalEnabled)
+				set_global_enabled
 				json_cleanup
-
-				init_action "$action" && \
-					print_json_bool "result" 1 || \
-					print_json_bool "result" 0
 				;;
 			getInterfaces)
 				get_interfaces
