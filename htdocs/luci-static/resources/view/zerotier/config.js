@@ -12,33 +12,50 @@
 'require view';
 'require tools.widgets as widgets';
 
+const callRcList = rpc.declare({
+	object: 'rc',
+	method: 'list',
+	params: [ 'name' ],
+	expect: { '': {} }
+});
+
+const callRcInit = rpc.declare({
+	object: 'rc',
+	method: 'init',
+	params: [ 'name', 'action' ],
+	expect: { result: false }
+});
+
 const callGetVersion = rpc.declare({
 	object: 'luci.zerotier',
 	method: 'getVersion',
 	expect: { '': {} }
 });
 
-const callGetInitStatus = rpc.declare({
+const callGetGlobalEnabled = rpc.declare({
 	object: 'luci.zerotier',
-	method: 'getInitStatus',
+	method: 'getGlobalEnabled',
 	expect: { '': {} }
 });
 
-const callInitAction = rpc.declare({
+const callSetGlobalEnabled = rpc.declare({
 	object: 'luci.zerotier',
-	method: 'InitAction',
-	params: [ 'action' ],
+	method: 'setGlobalEnabled',
 	expect: { '': {} }
 });
 
 function getServiceStatus() {
-	return callGetInitStatus().then(function(res) {
-		const status = res?.zerotier || {};
+	return Promise.all([
+		callRcList('zerotier'),
+		callGetGlobalEnabled()
+	]).then(function(res) {
+		const service = res[0]?.zerotier || {};
+		const global = res[1] || {};
 
 		return {
-			running: status.running === true,
-			enabled: status.enabled === true,
-			configEnabled: status.config_enabled === true
+			running: service.running === true,
+			enabled: service.enabled === true,
+			configEnabled: global.enabled === true
 		};
 	});
 }
@@ -55,8 +72,21 @@ function renderStatus(running, enabled, configEnabled) {
 	return E('span', {}, text);
 }
 
+function validateAbsolutePath(section_id, value) {
+	if (!value)
+		return true;
+
+	if (!value.startsWith('/'))
+		return _('Path must be absolute (start with /)');
+
+	if (value.includes('..') || value.includes('//'))
+		return _('Invalid path');
+
+	return true;
+}
+
 function pollServiceStatus(expectRunning, callback) {
-	const maxAttempts = 300;
+	const maxAttempts = 15;
 	let attempt = 0;
 
 	function checkStatus() {
@@ -82,7 +112,7 @@ function pollServiceStatus(expectRunning, callback) {
 		});
 	}
 
-	setTimeout(checkStatus, 3000);
+	setTimeout(checkStatus, 1500);
 }
 
 return view.extend({
@@ -122,7 +152,7 @@ return view.extend({
 					}, message)
 				]);
 
-				return callInitAction(action)
+				return callRcInit('zerotier', action)
 					.then(function() {
 						pollServiceStatus(expectedRunning, function() {
 							ui.hideModal();
@@ -151,12 +181,18 @@ return view.extend({
 					}, message)
 				]);
 
-				return callInitAction(action)
+				return callRcInit('zerotier', action)
 					.then(function() {
-						return getServiceStatus();
+						if (action !== 'enable')
+							return;
+
+						return callGetGlobalEnabled().then(function(res) {
+							if (res?.enabled !== true)
+								return callSetGlobalEnabled(true);
+						});
 					})
-					.then(function(res) {
-						updateStatus(res);
+					.then(function() {
+						return getServiceStatus().then(updateStatus);
 					})
 					.catch(function(err) {
 						ui.addNotification(null,
@@ -322,10 +358,12 @@ return view.extend({
 				_('documentation') +
 				'</a>).'));
 		o.value('/etc/zerotier.conf');
+		o.validate = validateAbsolutePath;
 
 		o = s.option(form.Value, 'config_path', _('Config path'),
 			_('Persistent configuration directory (to keep other configurations such as controller or moons, etc.).'));
 		o.value('/etc/zerotier');
+		o.validate = validateAbsolutePath;
 
 		o = s.option(form.Flag, 'copy_config_path', _('Copy config path'),
 			_('Copy the contents of the persistent configuration directory to memory instead of linking it, this avoids writing to flash.'));
