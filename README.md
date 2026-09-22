@@ -5,6 +5,7 @@ Based on the package developed for the ImmortalWrt LuCI project.
 ## Interface
 
 ![luci-app-zerotier](docs/screenshot1.png)
+![luci-app-zerotier](docs/screenshot2.png)
 
 ## Credits & License
 Thanks to everyone who develops, maintains, reviews, tests, and contributes to luci-app-zerotier.

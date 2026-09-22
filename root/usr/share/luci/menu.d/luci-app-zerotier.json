@@ -3,27 +3,11 @@
 		"title": "ZeroTier",
 		"order": 90,
 		"action": {
-			"type": "firstchild"
+			"type": "view",
+			"path": "zerotier/overview"
 		},
 		"depends": {
-			"acl": [ "luci-app-zerotier" ],
-			"uci": { "zerotier": true }
-		}
-	},
-	"admin/services/zerotier/config": {
-		"title": "Configuration",
-		"order": 10,
-		"action": {
-			"type": "view",
-			"path": "zerotier/config"
-		}
-	},
-	"admin/services/zerotier/interface": {
-		"title": "Interface info",
-		"order": 20,
-		"action": {
-			"type": "view",
-			"path": "zerotier/interface"
+			"acl": [ "luci-app-zerotier" ]
 		}
 	}
 }
