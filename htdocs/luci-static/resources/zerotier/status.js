@@ -10,18 +10,16 @@
 'require ui';
 'require baseclass';
 
-const callRcList = rpc.declare({
-	object: 'rc',
-	method: 'list',
-	params: [ 'name' ],
+const callGetInitStatus = rpc.declare({
+	object: 'luci.zerotier',
+	method: 'getInitStatus',
 	expect: { '': {} }
 });
-
-const callRcInit = rpc.declare({
-	object: 'rc',
-	method: 'init',
-	params: [ 'name', 'action' ],
-	expect: { result: false }
+const callSetInitAction = rpc.declare({
+	object: 'luci.zerotier',
+	method: 'setInitAction',
+	params: [ 'action' ],
+	expect: { '': {} }
 });
 
 const callGetVersion = rpc.declare({
@@ -30,31 +28,14 @@ const callGetVersion = rpc.declare({
 	expect: { '': {} }
 });
 
-const callGetGlobalEnabled = rpc.declare({
-	object: 'luci.zerotier',
-	method: 'getGlobalEnabled',
-	expect: { '': {} }
-});
-
-const callSetGlobalEnabled = rpc.declare({
-	object: 'luci.zerotier',
-	method: 'setGlobalEnabled',
-	expect: { '': {} }
-});
-
 var status = baseclass.extend({
 	getServiceStatus() {
-		return Promise.all([
-			callRcList('zerotier'),
-			callGetGlobalEnabled()
-		]).then(function(res) {
-			const service = res[0]?.zerotier || {};
-			const global = res[1] || {};
-
-			return {
-				running: service.running === true,
-				enabled: service.enabled === true,
-				configEnabled: global.enabled === true
+		return callGetInitStatus().then(function(res) {
+			const st = res?.zerotier || {};
+		return {
+				running: st.running === true,
+				enabled: st.enabled === true,
+				configEnabled: st.config_enabled === true
 			};
 		});
 	},
@@ -73,13 +54,12 @@ var status = baseclass.extend({
 	pollServiceStatus(expectRunning, callback) {
 		const maxAttempts = 15;
 		let attempt = 0;
+		const self = this;
 
 		function checkStatus() {
 			attempt++;
-
-			this.getServiceStatus().then(function(status) {
+			self.getServiceStatus().then(function(status) {
 				const isRunning = status.running === true;
-
 				if (expectRunning ? isRunning : !isRunning) {
 					callback(true);
 				}
@@ -89,7 +69,7 @@ var status = baseclass.extend({
 				else {
 					setTimeout(checkStatus, 1000);
 				}
-			}.bind(this)).catch(function() {
+			}).catch(function() {
 				if (attempt < maxAttempts)
 					setTimeout(checkStatus, 1000);
 				else
@@ -97,7 +77,7 @@ var status = baseclass.extend({
 			});
 		}
 
-		setTimeout(checkStatus.bind(this), 1500);
+		setTimeout(checkStatus, 1500);
 	},
 
 	render() {
@@ -138,7 +118,7 @@ var status = baseclass.extend({
 				}, message)
 			]);
 
-			return callRcInit('zerotier', action)
+			return callSetInitAction(action)
 				.then(function() {
 					self.pollServiceStatus(expectedRunning, function() {
 						ui.hideModal();
@@ -160,21 +140,9 @@ var status = baseclass.extend({
 
 		function setServiceAutostart(action, message) {
 			ui.showModal(null, [
-				E('p', {
-					class: 'spinning'
-				}, message)
+				E('p', { class: 'spinning' }, message)
 			]);
-
-			return callRcInit('zerotier', action)
-				.then(function() {
-					if (action !== 'enable')
-						return;
-
-					return callGetGlobalEnabled().then(function(res) {
-						if (res?.enabled !== true)
-							return callSetGlobalEnabled();
-					});
-				})
+			return callSetInitAction(action)
 				.then(function() {
 					return self.getServiceStatus().then(updateStatus);
 				})

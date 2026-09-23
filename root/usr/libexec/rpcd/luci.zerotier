@@ -6,12 +6,13 @@
 # Tests:
 #   ubus -v list luci.zerotier
 #   ubus -S call luci.zerotier getVersion
-#   ubus -S call luci.zerotier getGlobalEnabled
-#   ubus -S call luci.zerotier setGlobalEnabled
-#   ubus -S call luci.zerotier getInterfaces
+#   ubus -S call luci.zerotier getInitStatus
+#   ubus -S call luci.zerotier setInitAction '{"action":"restart"}'
+#   ubus -S call luci.zerotier getNetworks
 
 . /usr/share/libubox/jshn.sh
 
+readonly INIT_FILE="/etc/init.d/zerotier"
 readonly CONFIG="zerotier"
 readonly ZEROTIER_ONE="/usr/bin/zerotier-one"
 readonly ZEROTIER_CLI="/usr/bin/zerotier-cli"
@@ -37,12 +38,50 @@ json_error()
 }
 
 is_executable() { [ -x "$1" ]; }
+is_init_enabled() { "$INIT_FILE" enabled >/dev/null 2>&1; }
 is_config_enabled() { [ "$(uci -q get "${CONFIG}.global.enabled")" = "1" ]; }
+is_running() { "$INIT_FILE" running >/dev/null 2>&1; }
 
 set_config_enabled()
 {
 	uci -q set "${CONFIG}".global.enabled=1 || return 1
 	uci -q commit "$CONFIG" || return 1
+}
+
+init_action()
+{
+	if ! is_executable "$INIT_FILE"; then
+		log "Init script not found or not executable: $INIT_FILE" err
+		return 1
+	fi
+
+	local _result=0
+	case "$1" in
+		start)
+			"$INIT_FILE" start >/dev/null 2>&1 || _result=1
+			;;
+		stop)
+			"$INIT_FILE" stop >/dev/null 2>&1 || _result=1
+			;;
+		restart)
+			"$INIT_FILE" restart >/dev/null 2>&1 || _result=1
+			;;
+		enable)
+			"$INIT_FILE" enable >/dev/null 2>&1 || _result=1
+			if ! is_config_enabled; then
+				set_config_enabled || _result=1
+			fi
+			;;
+		disable)
+			"$INIT_FILE" disable >/dev/null 2>&1 || _result=1
+			;;
+		*)
+			log "Unsupported init action: $1" war
+			_result=1
+			;;
+	esac
+	print_json_bool "result" $((1-_result))
+	return "$_result"
 }
 
 get_version()
@@ -56,26 +95,27 @@ get_version()
 	json_cleanup
 }
 
-get_global_enabled()
+get_init_status()
 {
+	if ! is_executable "$INIT_FILE"; then
+		log "Init script not found or not executable: $INIT_FILE" err
+		json_error "Init script not found"
+		return 1
+	fi
+
 	json_init
-	is_config_enabled && json_add_boolean "enabled" 1 || json_add_boolean "enabled" 0
+	json_add_object "zerotier"
+
+	is_running && json_add_boolean "running" 1 || json_add_boolean "running" 0
+	is_init_enabled && json_add_boolean "enabled" 1 || json_add_boolean "enabled" 0
+	is_config_enabled && json_add_boolean "config_enabled" 1 || json_add_boolean "config_enabled" 0
+
+	json_close_object
 	json_dump
 	json_cleanup
 }
 
-set_global_enabled()
-{
-	local _enabled=1
-
-	if ! is_config_enabled; then
-		set_config_enabled || _enabled=0
-	fi
-	print_json_bool "result" $_enabled
-	return $((1-_enabled))
-}
-
-get_interfaces()
+get_networks()
 {
 	if ! is_executable "$ZEROTIER_CLI"; then
 		log "ZeroTier CLI not found or not executable: $ZEROTIER_CLI" err
@@ -111,7 +151,7 @@ get_interfaces()
 	json_set_namespace "output"
 	json_init
 	json_add_object "zerotier"
-	json_add_array "interfaces"
+	json_add_array "networks"
 	json_set_namespace "input"
 	local _network=1
 	while json_is_a "$_network" object; do
@@ -134,6 +174,7 @@ get_interfaces()
 		if [ -n "$portDeviceName" -a -d "/sys/class/net/$portDeviceName" ]; then
 			rx_bytes="$(cat "/sys/class/net/${portDeviceName}/statistics/rx_bytes" 2>/dev/null)"
 			tx_bytes="$(cat "/sys/class/net/${portDeviceName}/statistics/tx_bytes" 2>/dev/null)"
+			[ -n "$mtu" ] || mtu="$(cat "/sys/class/net/${portDeviceName}/mtu" 2>/dev/null)"
 		fi
 
 		json_set_namespace "output"
@@ -169,13 +210,14 @@ case "$1" in
 		json_add_object "getVersion"
 		json_close_object
 
-		json_add_object "getGlobalEnabled"
+		json_add_object "getInitStatus"
 		json_close_object
 
-		json_add_object "setGlobalEnabled"
+		json_add_object "setInitAction"
+		json_add_string "action" "action"
 		json_close_object
 
-		json_add_object "getInterfaces"
+		json_add_object "getNetworks"
 		json_close_object
 
 		json_dump
@@ -186,15 +228,18 @@ case "$1" in
 			getVersion)
 				get_version
 				;;
-			getGlobalEnabled)
-				get_global_enabled
+			getInitStatus)
+				get_init_status
 				;;
-			setGlobalEnabled)
-				set_global_enabled
+			setInitAction)
+				read -r input
+				json_load "$input"
+				json_get_var action "action"
 				json_cleanup
+				init_action "$action"
 				;;
-			getInterfaces)
-				get_interfaces
+			getNetworks)
+				get_networks
 				;;
 			*)
 				json_error "Unknown method: $2"
