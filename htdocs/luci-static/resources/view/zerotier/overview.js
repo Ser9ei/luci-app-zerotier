@@ -13,9 +13,9 @@
 'require tools.widgets as widgets';
 'require zerotier.status as zt';
 
-const callGetInterfaces = rpc.declare({
+const callGetNetworks = rpc.declare({
 	object: 'luci.zerotier',
-	method: 'getInterfaces',
+	method: 'getNetworks',
 	expect: { '': {} }
 });
 
@@ -62,30 +62,30 @@ function setSaveActionsVisible(show) {
 
 return view.extend({
 	load() {
-		return callGetInterfaces().then(function(res) {
+		return callGetNetworks().then(function(res) {
 			res = res || {};
 			const zerotier = res.zerotier || {};
-			const interfaces = zerotier.interfaces || [];
-			return Array.isArray(interfaces) ? interfaces : [];
+			const networks = zerotier.networks || [];
+			return Array.isArray(networks) ? networks : [];
 		}).catch(function(err) {
 			ui.addNotification(null, E('p', {},
-				_('Unable to get interface info: %s.').format(err.message)));
+				_('Unable to get network info: %s.').format(err.message)));
 			return [];
 		});
 	},
 
-	render_interface(interfaceData, index, isLast) {
+	render_network(networkData, index, isLast) {
 		const fields = [
-			[_('Network Name'), interfaceData.name],
-			[_('Network ID'), interfaceData.network_id],
-			[_('Network Device'), interfaceData.device_name],
-			[_('Type'), interfaceData.type],
-			[_('Status'), interfaceData.status],
-			[_('MAC Address'), interfaceData.mac],
-			[_('IP Address'), interfaceData.ip_address],
-			[_('MTU'), interfaceData.mtu],
-			[_('Received'), formatBytes(interfaceData.rx_bytes)],
-			[_('Sent'), formatBytes(interfaceData.tx_bytes)]
+			[_('Network Name'), networkData.name],
+			[_('Network ID'), networkData.network_id],
+			[_('Network Device'), networkData.device_name],
+			[_('Type'), networkData.type],
+			[_('Status'), networkData.status],
+			[_('MAC Address'), networkData.mac],
+			[_('IP Address'), networkData.ip_address],
+			[_('MTU'), networkData.mtu],
+			[_('Received'), formatBytes(networkData.rx_bytes)],
+			[_('Sent'), formatBytes(networkData.tx_bytes)]
 		];
 
 		const rows = fields.map(function(field) {
@@ -107,37 +107,35 @@ return view.extend({
 		}, rows);
 	},
 
-	renderInterfaces(data) {
+	renderNetworks(data) {
 		if (!Array.isArray(data) || data.length === 0)
-			return E('div', {}, _('No interface online.'));
+			return E('div', {}, _('No networks.'));
 
-		const tables = data.map(function(interfaceData, index) {
-			return this.render_interface(interfaceData, index, index === data.length - 1);
+		const tables = data.map(function(networkData, index) {
+			return this.render_network(networkData, index, index === data.length - 1);
 		}, this);
 
 		return E('div', {}, [
-			E('h3', {}, _('Network Interface Information')),
+			E('h3', {}, _('Network Information')),
 			...tables
 		]);
 	},
 
-	refreshInterfaces() {
-		const container = document.getElementById('zerotier-interfaces');
+	refreshNetworks() {
+		const container = document.getElementById('zerotier-networks');
 		if (!container)
 			return Promise.resolve();
 
-		/* вкладка скрыта — не трогаем */
 		if (container.offsetParent === null)
 			return Promise.resolve();
 
-		return callGetInterfaces().then(L.bind(function(res) {
+		return callGetNetworks().then(L.bind(function(res) {
 			res = res || {};
-			const list = res.zerotier?.interfaces;
+			const list = res.zerotier?.networks;
 			const data = Array.isArray(list) ? list : [];
-			const content = this.renderInterfaces(data);
+			const content = this.renderNetworks(data);
 			container.replaceChildren(content);
 		}, this)).catch(function() {
-			/* тихо игнорируем ошибки poll */
 		});
 	},
 
@@ -252,36 +250,36 @@ return view.extend({
 
 		const tabConfig = E('li', { 'class': 'cbi-tab', 'data-tab': 'config' },
 			E('a', { href: '#' }, _('Configuration')));
-		const tabInterfaces = E('li', { 'class': 'cbi-tab-disabled', 'data-tab': 'interfaces' },
-			E('a', { href: '#' }, _('Interfaces')));
-		const tabMenu = E('ul', { 'class': 'cbi-tabmenu' }, [ tabConfig, tabInterfaces ]);
+		const tabNetworks = E('li', { 'class': 'cbi-tab-disabled', 'data-tab': 'networks' },
+			E('a', { href: '#' }, _('Networks Status')));
+		const tabMenu = E('ul', { 'class': 'cbi-tabmenu' }, [ tabConfig, tabNetworks ]);
 
 		const panelConfig = E('div', {
 			'data-tab': 'config',
 			'data-tab-active': 'true'
 		});
-		const panelInterfaces = E('div', {
-			'id': 'zerotier-interfaces',
-			'data-tab': 'interfaces',
+		const panelNetworks = E('div', {
+			'id': 'zerotier-networks',
+			'data-tab': 'networks',
 			'data-tab-active': 'false',
 			'style': 'display:none'
-		}, [ this.renderInterfaces(data) ]);
+		}, [ this.renderNetworks(data) ]);
 
 		function switchTab(name) {
 			const isConfig = (name === 'config');
 
 			tabConfig.className = isConfig ? 'cbi-tab' : 'cbi-tab-disabled';
-			tabInterfaces.className = isConfig ? 'cbi-tab-disabled' : 'cbi-tab';
+			tabNetworks.className = isConfig ? 'cbi-tab-disabled' : 'cbi-tab';
 
 			panelConfig.setAttribute('data-tab-active', isConfig ? 'true' : 'false');
-			panelInterfaces.setAttribute('data-tab-active', isConfig ? 'false' : 'true');
+			panelNetworks.setAttribute('data-tab-active', isConfig ? 'false' : 'true');
 			panelConfig.style.display = isConfig ? '' : 'none';
-			panelInterfaces.style.display = isConfig ? 'none' : '';
+			panelNetworks.style.display = isConfig ? 'none' : '';
 
 			setSaveActionsVisible(isConfig);
 
 			if (!isConfig)
-				self.refreshInterfaces();
+				self.refreshNetworks();
 		}
 
 		tabConfig.addEventListener('click', function(ev) {
@@ -289,9 +287,9 @@ return view.extend({
 			switchTab('config');
 		});
 
-		tabInterfaces.addEventListener('click', function(ev) {
+		tabNetworks.addEventListener('click', function(ev) {
 			ev.preventDefault();
-			switchTab('interfaces');
+			switchTab('networks');
 		});
 
 		return Promise.all([
@@ -305,18 +303,18 @@ return view.extend({
 			});
 
 			document.addEventListener('zerotier-status-updated', function() {
-				self.refreshInterfaces();
+				self.refreshNetworks();
 			});
 
 			poll.add(function() {
-				return self.refreshInterfaces();
+				return self.refreshNetworks();
 			}, 15);
 
 			return E('div', {}, [
 				nodes[0],
 				tabMenu,
 				panelConfig,
-				panelInterfaces
+				panelNetworks
 			]);
 		});
 	}
