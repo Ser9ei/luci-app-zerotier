@@ -9,6 +9,7 @@
 #   ubus -S call luci.zerotier getInitStatus
 #   ubus -S call luci.zerotier setInitAction '{"action":"restart"}'
 #   ubus -S call luci.zerotier getNetworks
+#   ubus -S call luci.zerotier getPeers
 
 . /usr/share/libubox/jshn.sh
 
@@ -80,7 +81,10 @@ init_action()
 			_result=1
 			;;
 	esac
-	print_json_bool "result" $((1-_result))
+	json_init
+	json_add_boolean "result" $((1-_result))
+	json_dump
+	json_cleanup
 	return "$_result"
 }
 
@@ -123,8 +127,8 @@ get_networks()
 		return 1
 	fi
 
-	local _networks="$("$ZEROTIER_CLI" -j listnetworks 2>/dev/null)"
-	if [ $? -ne 0 -o -z "$_networks" ]; then
+	local _dump="$("$ZEROTIER_CLI" -j listnetworks 2>/dev/null)"
+	if [ $? -ne 0 -o -z "$_dump" ]; then
 		json_error "Failed to get ZeroTier network list"
 		return 1
 	fi
@@ -132,7 +136,7 @@ get_networks()
 	json_set_namespace "input"
 	json_init
 
-	if ! json_load "{\"networks\":$_networks}" || ! json_is_a networks array; then
+	if ! json_load "{\"networks\":$_dump}" || ! json_is_a networks array; then
 		log "Invalid JSON returned by ZeroTier CLI" err
 		json_cleanup
 		json_set_namespace ""
@@ -153,15 +157,14 @@ get_networks()
 	json_add_object "zerotier"
 	json_add_array "networks"
 	json_set_namespace "input"
-	local _network=1
-	while json_is_a "$_network" object; do
-		local id name type status portDeviceName mac mtu
-		local assignedAddresses ip_address rx_bytes tx_bytes
-
-		json_select "$_network"
+	local _index=1
+	local id name type status portDeviceName mac mtu assignedAddresses ip_address rx_bytes tx_bytes
+	local _rx_bytes _tx_bytes
+	while json_is_a "$_index" object; do
+		json_select "$_index"
 		json_get_vars id name type status portDeviceName mac mtu
 
-		ip_address=""
+		unset ip_address
 		if json_select "assignedAddresses"; then
 			json_get_values ip_address
 			json_select ..
@@ -169,11 +172,11 @@ get_networks()
 		fi
 
 		json_select ..
-		rx_bytes=""
-		tx_bytes=""
+		unset _rx_bytes
+		unset _tx_bytes
 		if [ -n "$portDeviceName" -a -d "/sys/class/net/$portDeviceName" ]; then
-			rx_bytes="$(cat "/sys/class/net/${portDeviceName}/statistics/rx_bytes" 2>/dev/null)"
-			tx_bytes="$(cat "/sys/class/net/${portDeviceName}/statistics/tx_bytes" 2>/dev/null)"
+			_rx_bytes="$(cat "/sys/class/net/${portDeviceName}/statistics/rx_bytes" 2>/dev/null)"
+			_tx_bytes="$(cat "/sys/class/net/${portDeviceName}/statistics/tx_bytes" 2>/dev/null)"
 			[ -n "$mtu" ] || mtu="$(cat "/sys/class/net/${portDeviceName}/mtu" 2>/dev/null)"
 		fi
 
@@ -187,12 +190,101 @@ get_networks()
 		json_add_string "mac" "$mac"
 		json_add_string "ip_address" "$ip_address"
 		json_add_string "mtu" "$mtu"
-		json_add_string "rx_bytes" "$rx_bytes"
-		json_add_string "tx_bytes" "$tx_bytes"
+		json_add_string "rx_bytes" "$_rx_bytes"
+		json_add_string "tx_bytes" "$_tx_bytes"
 		json_close_object
 
 		json_set_namespace "input"
-		_network=$(( _network + 1 ))
+		_index=$((_index+1))
+	done
+	json_cleanup
+
+	json_set_namespace "output"
+	json_close_array
+	json_close_object
+	json_dump
+	json_cleanup
+}
+
+get_peers()
+{
+	if ! is_executable "$ZEROTIER_CLI"; then
+		log "ZeroTier CLI not found or not executable: $ZEROTIER_CLI" err
+		json_error "ZeroTier CLI not found"
+		return 1
+	fi
+
+	local _dump="$("$ZEROTIER_CLI" -j listpeers 2>/dev/null)"
+	if [ $? -ne 0 -o -z "$_dump" ]; then
+		json_error "Failed to get ZeroTier peer list"
+		return 1
+	fi
+
+	json_set_namespace "input"
+	json_init
+
+	if ! json_load "{\"peers\":$_dump}" || ! json_is_a peers array; then
+		log "Invalid JSON returned by ZeroTier CLI" err
+		json_cleanup
+		json_set_namespace ""
+		json_error "Invalid ZeroTier CLI response"
+		return 1
+	fi
+
+	if ! json_select "peers"; then
+		log "Invalid peer list returned by ZeroTier CLI" err
+		json_cleanup
+		json_set_namespace ""
+		json_error "Invalid ZeroTier peer list"
+		return 1
+	fi
+
+	json_set_namespace "output"
+	json_init
+	json_add_object "zerotier"
+	json_add_array "peers"
+	json_set_namespace "input"
+	local _index=1 _ipath
+	local address version role tunneled latency link preferred
+	local _path_address
+	while json_is_a "$_index" object; do
+		json_select "$_index"
+		json_get_vars address version role tunneled latency
+		[ "${version:--1.-1.-1}" = "-1.-1.-1" ] && unset version
+		[ "$latency" = "-1" ] && unset latency
+		[ "$tunneled" = "1" ] && link="RELAY" || link="DIRECT"
+
+		unset _path_address
+		if json_select "paths"; then
+			_ipath=1
+			while json_is_a "$_ipath" object; do
+				json_select "$_ipath"
+				json_get_var preferred preferred
+				if [ "$preferred" = "1" ]; then
+					json_get_var _path_address address
+					json_select ..
+					break
+				fi
+				json_select ..
+				_ipath=$((_ipath+1))
+			done
+			json_select ..
+		fi
+
+		json_select ..
+
+		json_set_namespace "output"
+		json_add_object ""
+		json_add_string "address" "$address"
+		json_add_string "version" "$version"
+		json_add_string "role" "$role"
+		json_add_string "latency" "$latency"
+		json_add_string "link" "$link"
+		json_add_string "path" "$_path_address"
+		json_close_object
+
+		json_set_namespace "input"
+		_index=$((_index+1))
 	done
 	json_cleanup
 
@@ -220,6 +312,9 @@ case "$1" in
 		json_add_object "getNetworks"
 		json_close_object
 
+		json_add_object "getPeers"
+		json_close_object
+
 		json_dump
 		json_cleanup
 		;;
@@ -240,6 +335,9 @@ case "$1" in
 				;;
 			getNetworks)
 				get_networks
+				;;
+			getPeers)
+				get_peers
 				;;
 			*)
 				json_error "Unknown method: $2"

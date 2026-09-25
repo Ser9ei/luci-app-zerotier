@@ -19,6 +19,12 @@ const callGetNetworks = rpc.declare({
 	expect: { '': {} }
 });
 
+const callGetPeers = rpc.declare({
+	object: 'luci.zerotier',
+	method: 'getPeers',
+	expect: { '': {} }
+});
+
 function formatBytes(bytes) {
 	if (bytes === null || bytes === undefined || bytes === '')
 		return '0 B';
@@ -121,6 +127,39 @@ return view.extend({
 		]);
 	},
 
+	renderPeers(data) {
+		if (!Array.isArray(data) || data.length === 0)
+			return E('div', {}, _('No peers.'));
+
+		const rows = data.map(function(peerData, index) {
+			return E('tr', {
+				class: `tr cbi-rowstyle-${(index % 2) + 1}`
+			}, [
+				E('td', { class: 'td left' }, peerData.address || '—'),
+				E('td', { class: 'td center' }, peerData.version || '—'),
+				E('td', { class: 'td center' }, peerData.role || '—'),
+				E('td', { class: 'td right' }, peerData.latency || '—'),
+				E('td', { class: 'td center' }, peerData.link || '—'),
+				E('td', { class: 'td left' }, peerData.path || '—')
+			]);
+		});
+
+		return E('div', {}, [
+			E('h3', {}, _('Peer Information')),
+			E('table', { class: 'table' }, [
+				E('tr', { class: 'tr table-titles' }, [
+					E('th', { class: 'th left' }, _('Peer Address')),
+					E('th', { class: 'th center' }, _('Version')),
+					E('th', { class: 'th center' }, _('Role')),
+					E('th', { class: 'th right' }, _('Latency, ms')),
+					E('th', { class: 'th center' }, _('Link')),
+					E('th', { class: 'th left' }, _('Path'))
+				]),
+				...rows
+			])
+		]);
+	},
+
 	refreshNetworks() {
 		const container = document.getElementById('zerotier-networks');
 		if (!container)
@@ -134,6 +173,24 @@ return view.extend({
 			const list = res.zerotier?.networks;
 			const data = Array.isArray(list) ? list : [];
 			const content = this.renderNetworks(data);
+			container.replaceChildren(content);
+		}, this)).catch(function() {
+		});
+	},
+
+	refreshPeers() {
+		const container = document.getElementById('zerotier-peers');
+		if (!container)
+			return Promise.resolve();
+
+		if (container.offsetParent === null)
+			return Promise.resolve();
+
+		return callGetPeers().then(L.bind(function(res) {
+			res = res || {};
+			const list = res.zerotier?.peers;
+			const data = Array.isArray(list) ? list : [];
+			const content = this.renderPeers(data);
 			container.replaceChildren(content);
 		}, this)).catch(function() {
 		});
@@ -250,14 +307,24 @@ return view.extend({
 
 		const tabConfig = E('li', { 'class': 'cbi-tab', 'data-tab': 'config' },
 			E('a', { href: '#' }, _('Configuration')));
+
 		const tabNetworks = E('li', { 'class': 'cbi-tab-disabled', 'data-tab': 'networks' },
 			E('a', { href: '#' }, _('Networks Status')));
-		const tabMenu = E('ul', { 'class': 'cbi-tabmenu' }, [ tabConfig, tabNetworks ]);
+
+		const tabPeers = E('li', { 'class': 'cbi-tab-disabled', 'data-tab': 'peers' },
+			E('a', { href: '#' }, _('Peers Status')));
+
+		const tabMenu = E('ul', { 'class': 'cbi-tabmenu' }, [
+			tabConfig,
+			tabNetworks,
+			tabPeers
+		]);
 
 		const panelConfig = E('div', {
 			'data-tab': 'config',
 			'data-tab-active': 'true'
 		});
+
 		const panelNetworks = E('div', {
 			'id': 'zerotier-networks',
 			'data-tab': 'networks',
@@ -265,21 +332,36 @@ return view.extend({
 			'style': 'display:none'
 		}, [ this.renderNetworks(data) ]);
 
+		const panelPeers = E('div', {
+			'id': 'zerotier-peers',
+			'data-tab': 'peers',
+			'data-tab-active': 'false',
+			'style': 'display:none'
+		}, [ this.renderPeers([]) ]);
+
 		function switchTab(name) {
 			const isConfig = (name === 'config');
+			const isNetworks = (name === 'networks');
+			const isPeers = (name === 'peers');
 
 			tabConfig.className = isConfig ? 'cbi-tab' : 'cbi-tab-disabled';
-			tabNetworks.className = isConfig ? 'cbi-tab-disabled' : 'cbi-tab';
+			tabNetworks.className = isNetworks ? 'cbi-tab' : 'cbi-tab-disabled';
+			tabPeers.className = isPeers ? 'cbi-tab' : 'cbi-tab-disabled';
 
 			panelConfig.setAttribute('data-tab-active', isConfig ? 'true' : 'false');
-			panelNetworks.setAttribute('data-tab-active', isConfig ? 'false' : 'true');
+			panelNetworks.setAttribute('data-tab-active', isNetworks ? 'true' : 'false');
+			panelPeers.setAttribute('data-tab-active', isPeers ? 'true' : 'false');
+
 			panelConfig.style.display = isConfig ? '' : 'none';
-			panelNetworks.style.display = isConfig ? 'none' : '';
+			panelNetworks.style.display = isNetworks ? '' : 'none';
+			panelPeers.style.display = isPeers ? '' : 'none';
 
 			setSaveActionsVisible(isConfig);
 
-			if (!isConfig)
+			if (isNetworks)
 				self.refreshNetworks();
+			else if (isPeers)
+				self.refreshPeers();
 		}
 
 		tabConfig.addEventListener('click', function(ev) {
@@ -290,6 +372,11 @@ return view.extend({
 		tabNetworks.addEventListener('click', function(ev) {
 			ev.preventDefault();
 			switchTab('networks');
+		});
+
+		tabPeers.addEventListener('click', function(ev) {
+			ev.preventDefault();
+			switchTab('peers');
 		});
 
 		return Promise.all([
@@ -304,17 +391,20 @@ return view.extend({
 
 			document.addEventListener('zerotier-status-updated', function() {
 				self.refreshNetworks();
+				self.refreshPeers();
 			});
 
 			poll.add(function() {
-				return self.refreshNetworks();
+				self.refreshNetworks();
+				return self.refreshPeers();
 			}, 15);
 
 			return E('div', {}, [
 				nodes[0],
 				tabMenu,
 				panelConfig,
-				panelNetworks
+				panelNetworks,
+				panelPeers
 			]);
 		});
 	}

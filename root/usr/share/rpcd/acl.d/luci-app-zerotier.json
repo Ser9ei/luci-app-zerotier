@@ -6,7 +6,8 @@
 				"luci.zerotier": [
 					"getVersion",
 					"getInitStatus",
-					"getNetworks"
+					"getNetworks",
+					"getPeers"
 				]
 			},
 			"uci": [ "zerotier" ]
