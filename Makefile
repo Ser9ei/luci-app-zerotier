@@ -8,7 +8,7 @@ include $(TOPDIR)/rules.mk
 PKG_NAME:=luci-app-zerotier
 PKG_MAINTAINER:=Ser9ei <it4notice@proton.me>
 PKG_LICENSE:=GPL-3.0-only
-PKG_VERSION:=1.1.1
+PKG_VERSION:=1.2.0
 PKG_RELEASE:=1
 PKG_PO_VERSION:=$(PKG_VERSION)-r$(PKG_RELEASE)
 

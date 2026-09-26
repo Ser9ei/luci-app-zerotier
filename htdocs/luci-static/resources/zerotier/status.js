@@ -31,7 +31,7 @@ const callGetVersion = rpc.declare({
 var status = baseclass.extend({
 	getServiceStatus() {
 		return callGetInitStatus().then(function(res) {
-			const st = res?.zerotier || {};
+		const st = res?.zerotier || {};
 		return {
 				running: st.running === true,
 				enabled: st.enabled === true,
@@ -82,23 +82,31 @@ var status = baseclass.extend({
 
 	render() {
 		const self = this;
-
 		const header = E('div', {}, [
 				E('h2', { class: 'content' }, _('ZeroTier')),
 				E('div', { class: 'cbi-map-descr' }, [
-					_('ZeroTier is an open source, cross-platform and easy to use virtual LAN'),
-					' (',
+					_('ZeroTier is an open source, cross-platform and easy to use virtual LAN. For further information see '),
 					E('a', {
 						target: '_blank',
 						rel: 'noopener noreferrer',
 						href: 'https://openwrt.org/docs/guide-user/services/vpn/zerotier'
 					}, _('OpenWrt ZeroTier documentation')),
-					').'
+					'.',
+					E('br'),
+					_('LuCI app project'),
+					': ',
+					E('a', {
+						target: '_blank',
+						rel: 'noopener noreferrer',
+						href: 'https://github.com/Ser9ei/luci-app-zerotier'
+					}, 'GitHub'),
+					'.'
 				])
 			]);
 
+
 		const section = E('div', { class: 'cbi-section' }, [
-			E('h3', {}, _('Status'))
+			E('h3', {}, _('Service Status'))
 		]);
 
 		const version = E('div', { class: 'cbi-value' }, [

@@ -123,6 +123,8 @@ return view.extend({
 
 		return E('div', {}, [
 			E('h3', {}, _('Network Information')),
+			E('div', { class: 'cbi-map-descr' },
+				_('Joined networks reported by the ZeroTier service.')),
 			...tables
 		]);
 	},
@@ -146,6 +148,8 @@ return view.extend({
 
 		return E('div', {}, [
 			E('h3', {}, _('Peer Information')),
+			E('div', { class: 'cbi-map-descr' },
+				_('Peers and paths reported by the ZeroTier service.')),
 			E('table', { class: 'table' }, [
 				E('tr', { class: 'tr table-titles' }, [
 					E('th', { class: 'th left' }, _('Peer Address')),
@@ -204,18 +208,15 @@ return view.extend({
 
 		s = m.section(form.NamedSection, 'global', 'zerotier', _('Global configuration'));
 
-		o = s.option(form.Value, 'port', _('Listen port'));
+		o = s.option(form.Value, 'port', _('Listen port'), _('UDP port used by the ZeroTier service. Default is 9993, set to 0 for a random port.'));
 		o.datatype = 'port';
+		o.placeholder = '9993';
 
-		o = s.option(form.Value, 'secret', _('Client secret'));
+		o = s.option(form.Value, 'secret', _('Client secret'), _('ZeroTier identity secret for this node. Leave empty to generate one automatically on first start.'));
 		o.password = true;
 
 		o = s.option(form.Value, 'local_conf_path', _('Local config path'),
-			_('Path of the optional file local.conf ' +
-				'(see <a target="_blank" rel="noopener noreferrer" ' +
-				'href="https://docs.zerotier.com/config/#local-configuration-options">' +
-				_('documentation') +
-				'</a>).'));
+			_('Absolute path to the optional local.conf file, see <a target="_blank" rel="noopener noreferrer" href="https://openwrt.org/docs/guide-user/services/vpn/zerotier#local_configuration_options">documentation</a>.'));
 		o.value('/etc/zerotier.conf');
 		o.validate = validateAbsolutePath;
 
@@ -248,7 +249,7 @@ return view.extend({
 		s.sortable = true;
 		s.nodescriptions = true;
 
-		o = s.option(form.Flag, 'enabled', _('Enable'));
+		o = s.option(form.Flag, 'enabled', _('Enable'), _('Join this ZeroTier network when the service is running.'));
 		o.default = o.enabled;
 		o.editable = true;
 
