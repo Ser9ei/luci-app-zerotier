@@ -94,10 +94,13 @@ get_version()
 	is_executable "$ZEROTIER_ONE" && _version="$("$ZEROTIER_ONE" -v 2>/dev/null)" || _version="ZeroTier not found"
 
 	json_init
+	json_add_object "zerotier"
 	json_add_string "version" "${_version:-Unknown}"
 	json_dump
 	json_cleanup
 }
+
+get_node_info() { printf "$("$ZEROTIER_CLI" info 2>/dev/null | awk '{ printf "%s", $3; if ($5 != "") printf " - %s", $5; print "" }')"; }
 
 get_init_status()
 {
@@ -107,12 +110,19 @@ get_init_status()
 		return 1
 	fi
 
+	if ! is_executable "$ZEROTIER_CLI"; then
+		log "ZeroTier CLI not found or not executable: $ZEROTIER_CLI" err
+		json_error "ZeroTier CLI not found"
+		return 1
+	fi
+
 	json_init
 	json_add_object "zerotier"
 
 	is_running && json_add_boolean "running" 1 || json_add_boolean "running" 0
 	is_init_enabled && json_add_boolean "enabled" 1 || json_add_boolean "enabled" 0
 	is_config_enabled && json_add_boolean "config_enabled" 1 || json_add_boolean "config_enabled" 0
+	json_add_string "node" "$(get_node_info)"
 
 	json_close_object
 	json_dump

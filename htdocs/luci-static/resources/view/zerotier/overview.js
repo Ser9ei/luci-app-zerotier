@@ -216,7 +216,12 @@ return view.extend({
 		o.password = true;
 
 		o = s.option(form.Value, 'local_conf_path', _('Local config path'),
-			_('Absolute path to the optional local.conf file, see <a target="_blank" rel="noopener noreferrer" href="https://openwrt.org/docs/guide-user/services/vpn/zerotier#local_configuration_options">documentation</a>.'));
+			_('Absolute path to the optional local.conf file.') + ' ' +
+				'<a target="_blank" rel="noopener noreferrer" href="https://openwrt.org/docs/guide-user/services/vpn/zerotier#local_configuration_options">' +
+				_('See documentation') +
+				'</a>'
+		);
+
 		o.value('/etc/zerotier.conf');
 		o.validate = validateAbsolutePath;
 
@@ -232,14 +237,6 @@ return view.extend({
 		o = s.option(form.Flag, 'fw_allow_input', _('Allow input traffic'),
 			_('Allow input traffic to the ZeroTier daemon.'));
 
-		o = s.option(form.Button, '_panel', _('ZeroTier Central'),
-			_('Create or manage your ZeroTier network and authorize clients.'));
-		o.inputtitle = _('Open website');
-		o.inputstyle = 'apply';
-		o.onclick = function() {
-			window.open('https://my.zerotier.com/network', '_blank', 'noopener,noreferrer');
-		};
-
 		s = m.section(form.GridSection, 'network', _('Network configuration'));
 		s.modaltitle = function(section_id) {
 			return section_id ? _('Network - %s').format(section_id) : _('New Network');
@@ -253,7 +250,13 @@ return view.extend({
 		o.default = o.enabled;
 		o.editable = true;
 
-		o = s.option(form.Value, 'id', _('Network ID'), _('16 hexadecimal characters.'));
+		o = s.option(form.Value, 'id', _('Network ID'),
+			_('A unique 16-digit hexadecimal identifier for a ZeroTier virtual network.') + ' ' +
+				'<a target="_blank" rel="noopener noreferrer" href="https://docs.zerotier.com/glossary/#network-id">' +
+				_('See documentation') +
+				'</a>'
+		);
+
 		o.rmempty = false;
 		o.width = '20%';
 		o.maxlength = 16;
