@@ -1,30 +1,88 @@
 name: Build OpenWrt Package
 
 on:
+  push:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "Select build mode: normal or fast (skip ZeroTier build dependency)"
+        required: true
+        default: normal
+        type: choice
+        options:
+          - normal
+          - fast
+      openwrt_version:
+        description: "Choose OpenWrt version"
+        required: true
+        default: "25.12"
+        type: choice
+        options:
+          - "25.12"
+          - "24.10"
+          - "23.05"
+          - "21.02"
+          - "all"
 
 permissions:
   contents: read
 
 jobs:
+  prepare:
+    name: Prepare OpenWrt versions
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      mode: ${{ steps.set-mode.outputs.mode }}
+
+    steps:
+      - name: Set build matrix
+        id: set-matrix
+        run: |
+          VERSION="${{ github.event_name == 'push' && '25.12' || inputs.openwrt_version }}"
+
+          case "$VERSION" in
+            21.02)
+              MATRIX='{"include":[{"version":"21.02","target":"x86_64","suffix":"all"}]}'
+              ;;
+            23.05)
+              MATRIX='{"include":[{"version":"23.05","target":"x86_64","suffix":"all"}]}'
+              ;;
+            24.10)
+              MATRIX='{"include":[{"version":"24.10","target":"x86_64","suffix":"all"}]}'
+              ;;
+            25.12)
+              MATRIX='{"include":[{"version":"25.12","target":"x86_64","suffix":"all"}]}'
+              ;;
+            all)
+              MATRIX='{"include":[{"version":"21.02","target":"x86_64","suffix":"all"},{"version":"23.05","target":"x86_64","suffix":"all"},{"version":"24.10","target":"x86_64","suffix":"all"},{"version":"25.12","target":"x86_64","suffix":"all"}]}'
+              ;;
+            *)
+              echo "Unsupported OpenWrt version: $VERSION"
+              exit 1
+              ;;
+          esac
+
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "Build matrix:"
+          echo "$MATRIX"
+
+      - name: Set build mode
+        id: set-mode
+        run: |
+          MODE="${{ github.event_name == 'push' && 'fast' || inputs.mode }}"
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          echo "Build mode: $MODE"
+
   build:
     name: Build for ${{ matrix.version }} / ${{ matrix.target }}
+    needs: prepare
     runs-on: ubuntu-latest
     env:
       PKG_NAME: luci-app-zerotier
     strategy:
       fail-fast: false
-      matrix:
-        include:
-#          - version: "SNAPSHOT"
-#            target: x86_64
-#            suffix: all
-          - version: "24.10"
-            target: x86_64
-            suffix: all
-          - version: "25.12"
-            target: x86_64
-            suffix: all
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
 
     steps:
       - name: Checkout
@@ -44,11 +102,20 @@ jobs:
             --exclude='.github' \
             ./ "feed/luci/applications/${PKG_NAME}/"
 
+      - name: Patch Makefile for fast build
+        if: needs.prepare.outputs.mode == 'fast'
+        run: |
+          set -euo pipefail
+          sed -i '/^LUCI_DEPENDS[[:space:]]*[:?+]*=/d' \
+            "feed/luci/applications/${PKG_NAME}/Makefile"
+
       - name: Compute ARCH
         run: |
           case "${{ matrix.version }}" in
-            25.12) SDK_VERSION="25.12.5" ;;
+            21.02) SDK_VERSION="21.02.7" ;;
+            23.05) SDK_VERSION="23.05.6" ;;
             24.10) SDK_VERSION="24.10.7" ;;
+            25.12) SDK_VERSION="25.12.5" ;;
             SNAPSHOT) SDK_VERSION="SNAPSHOT" ;;
             *) SDK_VERSION="${{ matrix.version }}" ;;
           esac
@@ -90,13 +157,15 @@ jobs:
                   if [[ "$base" == luci-app-zerotier* ]]; then
                     out="${PKG_NAME}-${PKG_VERSION}-${REL}_${{ matrix.version }}_${{ matrix.suffix }}.${ext}"
                   else
-                    out="${base%.*}_${{ matrix.version }}_${{ matrix.suffix }}.${ext}"
+                    out="${base%.*}_${{ matrix.version }}.${ext}"
                   fi
                   cp -a "$f" "upload/$out"
                   echo "collected $out"
                   ;;
               esac
-            done < <(find bin/packages -type f -name "*.${ext}" -print0 2>/dev/null || true)
+            done < <(
+              find bin/packages -type f -name "*.${ext}" -print0 2>/dev/null || true
+            )
           done
           ls -la upload
           test -n "$(ls -A upload 2>/dev/null)"
