@@ -1,0 +1,110 @@
+name: Build OpenWrt Package
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build for ${{ matrix.version }} / ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    env:
+      PKG_NAME: luci-app-zerotier
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+#          - version: "SNAPSHOT"
+#            target: x86_64
+#            suffix: all
+          - version: "24.10"
+            target: x86_64
+            suffix: all
+          - version: "25.12"
+            target: x86_64
+            suffix: all
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up LuCI feed structure
+        run: |
+          set -euo pipefail
+          mkdir -p package
+          printf 'include $(TOPDIR)/feeds/luci/luci.mk\n' > package/luci.mk
+          mkdir -p "feed/luci/applications/${PKG_NAME}"
+          mkdir -p feed/luci
+          printf 'include $(TOPDIR)/feeds/luci/luci.mk\n' > feed/luci/luci.mk
+          rsync -av \
+            --exclude='.git' \
+            --exclude='feed' \
+            --exclude='.github' \
+            ./ "feed/luci/applications/${PKG_NAME}/"
+
+      - name: Compute ARCH
+        run: |
+          case "${{ matrix.version }}" in
+            25.12) SDK_VERSION="25.12.5" ;;
+            24.10) SDK_VERSION="24.10.7" ;;
+            SNAPSHOT) SDK_VERSION="SNAPSHOT" ;;
+            *) SDK_VERSION="${{ matrix.version }}" ;;
+          esac
+          echo "ARCH=${{ matrix.target }}-${SDK_VERSION}" >> "$GITHUB_ENV"
+          echo "Using ARCH=${{ matrix.target }}-${SDK_VERSION}"
+
+      - name: Build with OpenWrt SDK
+        uses: openwrt/gh-action-sdk@v8
+        env:
+          ARCH: ${{ env.ARCH }}
+          FEEDNAME: zerotier
+          PACKAGES: ${{ env.PKG_NAME }}
+          INDEX: 0
+          FEED_DIR: ${{ github.workspace }}/feed
+          NO_SHFMT_CHECK: 1
+          NO_REFRESH_CHECK: 1
+
+      - name: Debug packages tree
+        if: always()
+        run: |
+          find bin -type f \( -name '*.ipk' -o -name '*.apk' \) 2>/dev/null | head -100 || true
+          ls -laR bin/packages 2>/dev/null | head -200 || true
+
+      - name: Collect and rename packages
+        run: |
+          set -euo pipefail
+          PKG_VERSION=$(grep -E '^PKG_VERSION *:?=' Makefile | head -n1 | cut -d= -f2 | tr -d '[:space:]')
+          PKG_RELEASE=$(grep -E '^PKG_RELEASE *:?=' Makefile | head -n1 | cut -d= -f2 | tr -d '[:space:]')
+          mkdir -p upload
+          for ext in ipk apk; do
+            case "$ext" in
+              apk) REL="r${PKG_RELEASE}" ;;
+              *)   REL="${PKG_RELEASE}" ;;
+            esac
+            while IFS= read -r -d '' f; do
+              base=$(basename "$f")
+              case "$base" in
+                luci-app-zerotier*|luci-i18n-zerotier*)
+                  if [[ "$base" == luci-app-zerotier* ]]; then
+                    out="${PKG_NAME}-${PKG_VERSION}-${REL}_${{ matrix.version }}_${{ matrix.suffix }}.${ext}"
+                  else
+                    out="${base%.*}_${{ matrix.version }}_${{ matrix.suffix }}.${ext}"
+                  fi
+                  cp -a "$f" "upload/$out"
+                  echo "collected $out"
+                  ;;
+              esac
+            done < <(find bin/packages -type f -name "*.${ext}" -print0 2>/dev/null || true)
+          done
+          ls -la upload
+          test -n "$(ls -A upload 2>/dev/null)"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PKG_NAME }}-${{ matrix.version }}
+          path: upload/*
+          if-no-files-found: error
+          retention-days: 7
