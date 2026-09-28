@@ -2,6 +2,12 @@ name: Build OpenWrt Package
 
 on:
   push:
+    paths:
+      - 'htdocs/**'
+      - 'root/**'
+      - 'Makefile'
+      - 'po/**'
+
   workflow_dispatch:
     inputs:
       mode:
@@ -15,78 +21,85 @@ on:
       openwrt_version:
         description: "Choose OpenWrt version"
         required: true
-        default: "25.12"
+        default: "25.12.5"
         type: choice
         options:
-          - "25.12"
-          - "24.10"
-          - "23.05"
-          - "21.02"
+          - "25.12.5"
+          - "24.10.7"
+          - "23.05.6"
+          - "21.02.7"
           - "all"
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
   prepare:
-    name: Prepare OpenWrt versions
+    name: Prepare matrix
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-      mode: ${{ steps.set-mode.outputs.mode }}
-
+      matrix: ${{ steps.set.outputs.matrix }}
+      mode: ${{ steps.set.outputs.mode }}
     steps:
-      - name: Set build matrix
-        id: set-matrix
+      - name: Set matrix and mode
+        id: set
         run: |
-          VERSION="${{ github.event_name == 'push' && '25.12' || inputs.openwrt_version }}"
+          set -euo pipefail
+          # Single list: full SDK pin. Filename line = ${FULL%.*} (25.12.5 -> 25.12)
+          VERSIONS=(21.02.7 23.05.6 24.10.7 25.12.5)
 
-          case "$VERSION" in
-            21.02)
-              MATRIX='{"include":[{"version":"21.02","target":"x86_64","suffix":"all"}]}'
-              ;;
-            23.05)
-              MATRIX='{"include":[{"version":"23.05","target":"x86_64","suffix":"all"}]}'
-              ;;
-            24.10)
-              MATRIX='{"include":[{"version":"24.10","target":"x86_64","suffix":"all"}]}'
-              ;;
-            25.12)
-              MATRIX='{"include":[{"version":"25.12","target":"x86_64","suffix":"all"}]}'
-              ;;
-            all)
-              MATRIX='{"include":[{"version":"21.02","target":"x86_64","suffix":"all"},{"version":"23.05","target":"x86_64","suffix":"all"},{"version":"24.10","target":"x86_64","suffix":"all"},{"version":"25.12","target":"x86_64","suffix":"all"}]}'
-              ;;
-            *)
-              echo "Unsupported OpenWrt version: $VERSION"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            SELECTED=$(printf '%s\n' "${VERSIONS[@]}" | sort -V | tail -n1)
+            MODE="fast"
+          else
+            SELECTED="${{ inputs.openwrt_version }}"
+            MODE="${{ inputs.mode }}"
+          fi
+
+          build_entry() {
+            local full="$1"
+            local line="${full%.*}"
+            echo "{\"version\":\"${line}\",\"sdk\":\"${full}\",\"target\":\"x86_64\",\"suffix\":\"all\"}"
+          }
+
+          if [ "$SELECTED" = "all" ]; then
+            parts=()
+            for v in "${VERSIONS[@]}"; do parts+=("$(build_entry "$v")"); done
+            MATRIX="{\"include\":[$(IFS=,; echo "${parts[*]}")]}"
+          else
+            ok=0
+            for v in "${VERSIONS[@]}"; do
+              [ "$v" = "$SELECTED" ] && ok=1 && break
+            done
+            if [ "$ok" -ne 1 ]; then
+              echo "Unsupported version: $SELECTED" >&2
               exit 1
-              ;;
-          esac
+            fi
+            MATRIX="{\"include\":[$(build_entry "$SELECTED")]}"
+          fi
 
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
-          echo "Build matrix:"
-          echo "$MATRIX"
-
-      - name: Set build mode
-        id: set-mode
-        run: |
-          MODE="${{ github.event_name == 'push' && 'fast' || inputs.mode }}"
           echo "mode=$MODE" >> "$GITHUB_OUTPUT"
-          echo "Build mode: $MODE"
+          echo "mode=$MODE matrix=$MATRIX"
 
   build:
-    name: Build for ${{ matrix.version }} / ${{ matrix.target }}
+    name: Build ${{ matrix.version }} (${{ matrix.sdk }})
     needs: prepare
     runs-on: ubuntu-latest
     env:
       PKG_NAME: luci-app-zerotier
+      DEBUG_PACKAGES: "0"
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up LuCI feed structure
         run: |
@@ -106,21 +119,18 @@ jobs:
         if: needs.prepare.outputs.mode == 'fast'
         run: |
           set -euo pipefail
-          sed -i '/^LUCI_DEPENDS[[:space:]]*[:?+]*=/d' \
-            "feed/luci/applications/${PKG_NAME}/Makefile"
+          MF="feed/luci/applications/${PKG_NAME}/Makefile"
+          if grep -qE '^LUCI_DEPENDS[[:space:]]*[:?+]*=' "$MF"; then
+            sed -i '/^LUCI_DEPENDS[[:space:]]*[:?+]*=/d' "$MF"
+            echo "fast: removed LUCI_DEPENDS"
+          else
+            echo "::warning::fast mode: expected LUCI_DEPENDS in Makefile, but none found — dependency not stripped"
+          fi
 
       - name: Compute ARCH
         run: |
-          case "${{ matrix.version }}" in
-            21.02) SDK_VERSION="21.02.7" ;;
-            23.05) SDK_VERSION="23.05.6" ;;
-            24.10) SDK_VERSION="24.10.7" ;;
-            25.12) SDK_VERSION="25.12.5" ;;
-            SNAPSHOT) SDK_VERSION="SNAPSHOT" ;;
-            *) SDK_VERSION="${{ matrix.version }}" ;;
-          esac
-          echo "ARCH=${{ matrix.target }}-${SDK_VERSION}" >> "$GITHUB_ENV"
-          echo "Using ARCH=${{ matrix.target }}-${SDK_VERSION}"
+          echo "ARCH=${{ matrix.target }}-${{ matrix.sdk }}" >> "$GITHUB_ENV"
+          echo "Using ARCH=${{ matrix.target }}-${{ matrix.sdk }}"
 
       - name: Build with OpenWrt SDK
         uses: openwrt/gh-action-sdk@v8
@@ -134,7 +144,7 @@ jobs:
           NO_REFRESH_CHECK: 1
 
       - name: Debug packages tree
-        if: always()
+        if: env.DEBUG_PACKAGES == '1'
         run: |
           find bin -type f \( -name '*.ipk' -o -name '*.apk' \) 2>/dev/null | head -100 || true
           ls -laR bin/packages 2>/dev/null | head -200 || true
@@ -171,9 +181,9 @@ jobs:
           test -n "$(ls -A upload 2>/dev/null)"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.PKG_NAME }}-${{ matrix.version }}
           path: upload/*
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 3
