@@ -87,7 +87,7 @@ jobs:
             if [ -z "${BASE:-}" ]; then
               FILES=$(git ls-files '*.js' '*.json' '*.md' || true)
             else
-              FILES=$(git diff --diff-filter=ACM --name-only "$BASE" "$HEAD" \
+              FILES=$(git diff --diff-filter=ACMR --name-only "$BASE" "$HEAD" \
                 | grep -E '\.(js|json|md)$' || true)
             fi
           fi
