@@ -1,0 +1,104 @@
+---
+name: "LuCI ESLint JS/JSON and MD Analysis"
+
+on:
+  push:
+    branches: [ "master" ]
+    paths:
+      - '**/*.json'
+      - '**/*.js'
+      - '**/*.md'
+
+  pull_request:
+    branches: [ "master" ]
+    paths:
+      - '**/*.json'
+      - '**/*.js'
+      - '**/*.md'
+
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: "Lint scope"
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - changed
+
+concurrency:
+  group: lint-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  eslint:
+    name: ESLint JS/JSON/MD
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: latest
+
+      # eslint/json requires eslint@9 - 10 is coming.
+      - name: Install ESLint
+        run: |
+          npm install --no-audit --no-fund --save-dev \
+            eslint@9 \
+            globals \
+            @eslint/json@latest \
+            @eslint/js@9 \
+            @eslint/markdown \
+            eslint-formatter-gha
+
+      - name: Run ESLint
+        run: |
+          set -euo pipefail
+
+          SCOPE="${{ github.event_name == 'workflow_dispatch' && inputs.scope || 'changed' }}"
+
+          if [ "$SCOPE" = "all" ]; then
+            FILES=$(git ls-files '*.js' '*.json' '*.md' | grep -v node_modules || true)
+          else
+            if [ "${{ github.event_name }}" = "pull_request" ]; then
+              BASE="${{ github.event.pull_request.base.sha }}"
+              HEAD="${{ github.event.pull_request.head.sha }}"
+            elif [ "${{ github.event_name }}" = "push" ]; then
+              BEFORE="${{ github.event.before }}"
+              if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+                BASE="$BEFORE"
+              else
+                BASE="$(git rev-parse HEAD~1 2>/dev/null || true)"
+              fi
+              HEAD="${{ github.sha }}"
+            else
+              BASE="$(git rev-parse HEAD~1 2>/dev/null || true)"
+              HEAD="$(git rev-parse HEAD)"
+            fi
+
+            if [ -z "${BASE:-}" ]; then
+              FILES=$(git ls-files '*.js' '*.json' '*.md' || true)
+            else
+              FILES=$(git diff --diff-filter=ACM --name-only "$BASE" "$HEAD" \
+                | grep -E '\.(js|json|md)$' || true)
+            fi
+          fi
+
+          if [ -z "${FILES// }" ]; then
+            echo "No JS/JSON or MD files changed"
+            exit 0
+          fi
+
+          echo "Linting files:"
+          echo "$FILES"
+
+          # shellcheck disable=SC2086
+          npx eslint --config .github/eslint.config.mjs $FILES
