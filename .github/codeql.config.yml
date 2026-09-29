@@ -1,0 +1,9 @@
+name: "CodeQL config"
+
+# Files included in the analysis (not the same as on.push.paths)
+paths:
+  - '**/*.js'
+  - '**/*.json'
+  - '**/*.htm*'
+# paths-ignore:
+#   - '**/*.test.js'
