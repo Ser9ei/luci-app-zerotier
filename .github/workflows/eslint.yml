@@ -38,7 +38,7 @@ jobs:
     name: ESLint JS/JSON/MD
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
+      - name: Checkout
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
@@ -48,7 +48,6 @@ jobs:
         with:
           node-version: latest
 
-      # eslint/json requires eslint@9 - 10 is coming.
       - name: Install ESLint
         run: |
           npm install --no-audit --no-fund --save-dev \
