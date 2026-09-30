@@ -13,6 +13,8 @@
 
 . /usr/share/libubox/jshn.sh
 
+readonly LUCI_ZEROTIER_VERSION=dev
+
 readonly INIT_FILE="/etc/init.d/zerotier"
 readonly CONFIG="zerotier"
 readonly ZEROTIER_ONE="/usr/bin/zerotier-one"
@@ -96,6 +98,8 @@ get_version()
 	json_init
 	json_add_object "zerotier"
 	json_add_string "version" "${_version:-Unknown}"
+	json_add_string "luci" "${LUCI_ZEROTIER_VERSION:-dev}"
+	json_close_object
 	json_dump
 	json_cleanup
 }

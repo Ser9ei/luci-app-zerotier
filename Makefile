@@ -8,7 +8,7 @@ include $(TOPDIR)/rules.mk
 PKG_NAME:=luci-app-zerotier
 PKG_MAINTAINER:=Ser9ei <it4notice@proton.me>
 PKG_LICENSE:=GPL-3.0-only
-PKG_VERSION:=1.2.0
+PKG_VERSION:=1.2.1
 PKG_RELEASE:=1
 PKG_PO_VERSION:=$(PKG_VERSION)-r$(PKG_RELEASE)
 
@@ -16,6 +16,11 @@ LUCI_TITLE:=LuCI for ZeroTier
 LUCI_URL:=https://github.com/Ser9ei/luci-app-zerotier/
 LUCI_DESCRIPTION:=Provides Web UI for ZeroTier Service.
 LUCI_DEPENDS:=+zerotier
+
+define Build/Prepare/$(PKG_NAME)
+	$(SED) 's|^readonly LUCI_ZEROTIER_VERSION=.*|readonly LUCI_ZEROTIER_VERSION="$(PKG_VERSION)"|' \
+		$(PKG_BUILD_DIR)/root/usr/libexec/rpcd/luci.zerotier
+endef
 
 include $(TOPDIR)/feeds/luci/luci.mk
 

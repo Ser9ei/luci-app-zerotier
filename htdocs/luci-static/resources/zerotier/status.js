@@ -85,7 +85,7 @@ var status = baseclass.extend({
 	render() {
 		const self = this;
 		const header = E('div', {}, [
-			E('h2', { class: 'content' }, _('ZeroTier')),
+			E('h2', { class: 'content' }, 'ZeroTier'),
 			E('div', { class: 'cbi-map-descr' }, [
 				_('ZeroTier is an open source, cross-platform and easy to use virtual LAN.'),
 				' ',
@@ -95,15 +95,7 @@ var status = baseclass.extend({
 					target: '_blank',
 					rel: 'noopener noreferrer',
 					href: 'https://openwrt.org/docs/guide-user/services/vpn/zerotier'
-				}, _('OpenWrt ZeroTier documentation.')),
-				E('br'),
-				_('LuCI app project'),
-				': ',
-				E('a', {
-					target: '_blank',
-					rel: 'noopener noreferrer',
-					href: 'https://github.com/Ser9ei/luci-app-zerotier'
-				}, 'GitHub.')
+				}, _('OpenWrt ZeroTier documentation.'))
 			])
 		]);
 
@@ -123,7 +115,7 @@ var status = baseclass.extend({
 		]);
 
 		const central = E('div', { class: 'cbi-value' }, [
-			E('label', { class: 'cbi-value-title' }, _('ZeroTier Central')),
+			E('label', { class: 'cbi-value-title' }, 'ZeroTier Central'),
 			E('div', { class: 'cbi-value-field' }, [
 				E('button', {
 					class: 'btn cbi-button cbi-button-apply',
@@ -305,8 +297,25 @@ var status = baseclass.extend({
 
 		callGetVersion()
 			.then(function(res) {
-				version.lastElementChild.textContent =
-					res?.zerotier?.version ?? _('Unknown');
+				const ver = res?.zerotier;
+				if (!ver)
+					return version.lastElementChild.textContent = _('Unknown');
+
+				version.lastElementChild.replaceChildren(
+					E('div', {}, [
+						E('div', {}, ('ZeroTier One - %s').format(ver.version || _('Unknown'))),
+						E('div', {}, [
+							_('LuCI app project - %s').format(ver.luci || _('Unknown')),
+							' (',
+							E('a', {
+								target: '_blank',
+								rel: 'noopener noreferrer',
+								href: 'https://github.com/Ser9ei/luci-app-zerotier'
+							}, 'GitHub'),
+							')'
+						])
+					])
+				);
 			})
 			.catch(function() {
 				version.lastElementChild.textContent = _('Unknown');
