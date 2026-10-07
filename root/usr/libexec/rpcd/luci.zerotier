@@ -104,7 +104,8 @@ get_version()
 	json_cleanup
 }
 
-get_node_info() { printf "$("$ZEROTIER_CLI" info 2>/dev/null | awk '{ printf "%s", $3; if ($5 != "") printf " - %s", $5; print "" }')"; }
+get_node_info() { "$ZEROTIER_CLI" info 2>/dev/null | awk '$2 == "info" { printf "%s", $3; if ($5 != "") printf " - %s", $5; print "" }'; }
+get_networks_summary() { "$ZEROTIER_CLI" listnetworks 2>/dev/null | awk 'NR > 1 && $2 == "listnetworks" { total++; if ($6 == "OK") active++ } END { print total ? (active ? active : 0) "/" total : "" }'; }
 
 get_init_status()
 {
@@ -127,6 +128,7 @@ get_init_status()
 	is_init_enabled && json_add_boolean "enabled" 1 || json_add_boolean "enabled" 0
 	is_config_enabled && json_add_boolean "config_enabled" 1 || json_add_boolean "config_enabled" 0
 	json_add_string "node" "$(get_node_info)"
+	json_add_string "networks" "$(get_networks_summary)"
 
 	json_close_object
 	json_dump
@@ -172,7 +174,7 @@ get_networks()
 	json_add_array "networks"
 	json_set_namespace "input"
 	local _index=1
-	local id name type status portDeviceName mac mtu assignedAddresses ip_address rx_bytes tx_bytes
+	local id name type status portDeviceName mac mtu assignedAddresses ip_address
 	local _rx_bytes _tx_bytes
 	while json_is_a "$_index" object; do
 		json_select "$_index"

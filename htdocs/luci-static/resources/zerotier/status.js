@@ -37,7 +37,8 @@ var status = baseclass.extend({
 				running: st.running === true,
 				enabled: st.enabled === true,
 				configEnabled: st.config_enabled === true,
-				node: st.node || ''
+				node: st.node || '',
+				networks: st.networks || ''
 			};
 		});
 	},
@@ -280,11 +281,18 @@ var status = baseclass.extend({
 			const enabled = res.enabled === true;
 			const configEnabled = res.configEnabled === true;
 			const nodeInfo = res.node || '';
+			const networksInfo = res.networks || '';
 
 			status.lastElementChild.replaceChildren(
 				self.renderStatus(running, enabled, configEnabled)
 			);
-			node.lastElementChild.textContent = nodeInfo || '-';
+
+			if (nodeInfo !== '' && networksInfo !== '') {
+				node.lastElementChild.textContent =
+					nodeInfo + ' (' + _('Active Networks') + ': ' + networksInfo + ')';
+			} else {
+				node.lastElementChild.textContent = '-';
+			}
 
 			btnStart.disabled = running || !configEnabled;
 			btnRestart.disabled = !running || !configEnabled;
