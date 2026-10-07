@@ -1,4 +1,4 @@
-name: Build OpenWrt Package
+name: "Build OpenWrt Package"
 
 on:
   push:
@@ -22,14 +22,11 @@ on:
       openwrt_version:
         description: "Choose OpenWrt version"
         required: true
-        default: "25.12.5"
+        default: last
         type: choice
         options:
-          - "25.12.5"
-          - "24.10.7"
-          - "23.05.6"
-          - "21.02.7"
-          - "all"
+          - last
+          - all
 
 concurrency:
   group: build-${{ github.workflow }}-${{ github.ref }}
@@ -48,13 +45,22 @@ jobs:
     steps:
       - name: Set matrix and mode
         id: set
+        env:
+          SDK_VERSIONS: ${{ vars.CI_OPENWRT_SDK_VERSIONS }}
+          RELEASE: ${{ vars.CI_OPENWRT_RELEASE }}
         run: |
           set -euo pipefail
-          # Single list: full SDK pin. Filename line = ${FULL%.*} (25.12.5 -> 25.12)
-          VERSIONS=(21.02.7 23.05.6 24.10.7 25.12.5)
+
+          if [ -z "${SDK_VERSIONS// }" ]; then
+            echo "::warning::CI_OPENWRT_SDK_VERSIONS is empty — fallback to SNAPSHOT only"
+            VERSIONS=(SNAPSHOT)
+          else
+            # shellcheck disable=SC2206
+            VERSIONS=($SDK_VERSIONS)
+          fi
 
           if [ "${{ github.event_name }}" = "push" ]; then
-            SELECTED=$(printf '%s\n' "${VERSIONS[@]}" | sort -V | tail -n1)
+            SELECTED="last"
             MODE="fast"
           else
             SELECTED="${{ inputs.openwrt_version }}"
@@ -64,23 +70,44 @@ jobs:
           build_entry() {
             local full="$1"
             local line="${full%.*}"
+            if [ "$full" = "SNAPSHOT" ]; then
+              line="SNAPSHOT"
+            fi
             echo "{\"version\":\"${line}\",\"sdk\":\"${full}\",\"target\":\"x86_64\",\"suffix\":\"all\"}"
           }
 
           if [ "$SELECTED" = "all" ]; then
             parts=()
-            for v in "${VERSIONS[@]}"; do parts+=("$(build_entry "$v")"); done
-            MATRIX="{\"include\":[$(IFS=,; echo "${parts[*]}")]}"
-          else
-            ok=0
             for v in "${VERSIONS[@]}"; do
-              [ "$v" = "$SELECTED" ] && ok=1 && break
+              parts+=("$(build_entry "$v")")
             done
-            if [ "$ok" -ne 1 ]; then
-              echo "Unsupported version: $SELECTED" >&2
+            MATRIX="{\"include\":[$(IFS=,; echo "${parts[*]}")]}"
+          elif [ "$SELECTED" = "last" ]; then
+            if [ -z "${RELEASE// }" ]; then
+              echo "::error::CI_OPENWRT_RELEASE is empty" >&2
               exit 1
             fi
-            MATRIX="{\"include\":[$(build_entry "$SELECTED")]}"
+
+            LAST=""
+            for v in "${VERSIONS[@]}"; do
+              line="${v%.*}"
+              if [ "$v" = "SNAPSHOT" ]; then
+                line="SNAPSHOT"
+              fi
+              if [ "$line" = "$RELEASE" ] || [ "$v" = "$RELEASE" ]; then
+                LAST="$v"
+              fi
+            done
+
+            if [ -z "$LAST" ]; then
+              echo "::error::No SDK pin for CI_OPENWRT_RELEASE=${RELEASE} in CI_OPENWRT_SDK_VERSIONS" >&2
+              exit 1
+            fi
+
+            MATRIX="{\"include\":[$(build_entry "$LAST")]}"
+          else
+            echo "Unsupported selection: $SELECTED" >&2
+            exit 1
           fi
 
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"

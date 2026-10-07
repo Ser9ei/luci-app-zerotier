@@ -1,0 +1,366 @@
+name: "LuCI i18n"
+
+on:
+  push:
+    branches: [ "master" ]
+    paths:
+      - '**/*.js'
+      - '**/*.json'
+      - '**/*.htm'
+      - '**/*.html'
+      - '**/*.lua'
+      - '**/*.uc'
+      - '**/*.ut'
+
+  pull_request:
+    branches: [ "master" ]
+    paths:
+      - '**/*.js'
+      - '**/*.json'
+      - '**/*.htm'
+      - '**/*.html'
+      - '**/*.lua'
+      - '**/*.uc'
+      - '**/*.ut'
+
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Select action"
+        required: true
+        default: check
+        type: choice
+        options:
+          - check
+          - check+commit
+
+concurrency:
+  group: i18n-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  LUCI_VERSION: openwrt-${{ vars.CI_OPENWRT_RELEASE }}
+  PKG_DIR: applications/luci-app-zerotier
+  POT_FILE: applications/luci-app-zerotier/po/templates/zerotier.pot
+
+jobs:
+  check:
+    name: Check i18n
+    runs-on: ubuntu-latest
+    outputs:
+      pot_changed: ${{ steps.compare_pot.outputs.changed }}
+      po_changed: ${{ steps.compare_po.outputs.changed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          path: applications/luci-app-zerotier
+
+      - name: Install gettext and Perl dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            gettext \
+            perl \
+            libtext-balanced-perl
+
+      - name: Checkout LuCI i18n tools
+        uses: actions/checkout@v6
+        with:
+          repository: openwrt/luci
+          ref: ${{ env.LUCI_VERSION }}
+          path: luci
+          sparse-checkout: |
+            build/i18n-scan.pl
+            build/i18n-update.pl
+            luci.mk
+
+      - name: Generate POT
+        run: |
+          set -euo pipefail
+
+          test -f "${POT_FILE}"
+
+          mkdir -p .i18n
+
+          perl luci/build/i18n-scan.pl "${PKG_DIR}" > .i18n/generated.pot
+
+          echo "Generated POT:"
+          wc -l .i18n/generated.pot
+
+          echo "Repository POT:"
+          wc -l "${POT_FILE}"
+
+      - name: Compare POT
+        id: compare_pot
+        run: |
+          set -euo pipefail
+
+          test -f "${POT_FILE}"
+          test -f ".i18n/generated.pot"
+
+          if cmp -s "${POT_FILE}" ".i18n/generated.pot"; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "POT is up to date."
+
+            {
+              echo "## POT check"
+              echo
+              echo "✅ **POT is up to date.**"
+              echo
+              echo "Repository and generated POT files are identical."
+            } >> "$GITHUB_STEP_SUMMARY"
+
+            exit 0
+          fi
+
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+          diff -u "${POT_FILE}" ".i18n/generated.pot" > .i18n/zerotier.pot.diff || true
+
+          echo "::warning::Translation template is not up to date."
+
+          {
+            echo "## POT check"
+            echo
+            echo "⚠️ **POT is not up to date.**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Show POT diff
+        if: steps.compare_pot.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+
+          {
+            echo
+            echo "### POT update required"
+            echo
+            echo '```diff'
+            cat .i18n/zerotier.pot.diff
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Select PO files
+        run: |
+          set -euo pipefail
+
+          find "${PKG_DIR}/po" -type f -name '*.po' -print | sort > .i18n/files
+
+          if [ ! -s .i18n/files ]; then
+            echo "::error::No PO files found."
+            exit 1
+          fi
+
+          echo "PO files:"
+          cat .i18n/files
+
+      - name: Validate PO syntax
+        run: |
+          set -euo pipefail
+
+          while IFS= read -r file; do
+            echo "Checking $file"
+            msgfmt --check --check-format --output-file=/dev/null "$file"
+          done < .i18n/files
+
+      - name: Synchronize PO files
+        run: |
+          set -euo pipefail
+
+          rm -rf po-work
+
+          cp -a "${PKG_DIR}/po" po-work
+          cp ".i18n/generated.pot" po-work/templates/zerotier.pot
+
+          echo "Synchronizing PO files..."
+
+          perl luci/build/i18n-update.pl "${GITHUB_WORKSPACE}/po-work"
+
+      - name: Compare PO files
+        id: compare_po
+        run: |
+          set -euo pipefail
+
+          mkdir -p .i18n/diff
+
+          changed=false
+
+          while IFS= read -r file; do
+            rel="${file#${PKG_DIR}/po/}"
+            work="po-work/${rel}"
+            diff_file=".i18n/diff/${rel}.diff"
+
+            mkdir -p "$(dirname "$diff_file")"
+
+            if cmp -s "$file" "$work"; then
+              echo "No changes: $file"
+            else
+              diff -u --label "a/${rel}" --label "b/${rel}" "$file" "$work" > "$diff_file" || true
+              echo "Changed: $file"
+              changed=true
+            fi
+          done < .i18n/files
+
+          echo "changed=${changed}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate PO statistics
+        run: |
+          set -euo pipefail
+
+          {
+            echo "## PO statistics"
+            echo
+            echo "| File | Total | Untranslated | Fuzzy |"
+            echo "|---|---:|---:|---:|"
+
+            while IFS= read -r file; do
+              total=$(msgattrib --no-obsolete --no-fuzzy "$file" | grep -c '^msgid ' || true)
+              untranslated=$(msgattrib --untranslated --no-obsolete --no-fuzzy "$file" | grep -c '^msgid ' || true)
+              fuzzy=$(msgattrib --only-fuzzy --no-obsolete "$file" | grep -c '^msgid ' || true)
+              rel="${file#${PKG_DIR}/po/}"
+              echo "| \`${rel}\` | ${total} | ${untranslated} | ${fuzzy} |"
+            done < .i18n/files
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Show PO diff
+        if: steps.compare_po.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+
+          {
+            echo
+            echo "## PO update required"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          while IFS= read -r file; do
+            rel="${file#${PKG_DIR}/po/}"
+            diff_file=".i18n/diff/${rel}.diff"
+
+            if [ -f "$diff_file" ]; then
+              {
+                echo "### ${rel}"
+                echo
+                echo '```diff'
+                cat "$diff_file"
+                echo '```'
+                echo
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done < .i18n/files
+
+          echo "::warning::PO catalogues are not up to date."
+
+      - name: Show PO status
+        if: steps.compare_po.outputs.changed == 'false'
+        run: |
+          set -euo pipefail
+
+          {
+            echo
+            echo "## PO check"
+            echo
+            echo "✅ **PO catalogues are up to date.**"
+            echo
+            echo "All selected PO files are synchronized with the generated POT."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "PO catalogues are up to date."
+
+      - name: Show i18n status
+        if: steps.compare_pot.outputs.changed == 'false' && steps.compare_po.outputs.changed == 'false'
+        run: |
+          set -euo pipefail
+
+          {
+            echo
+            echo "## i18n check"
+            echo
+            echo "✅ **POT and PO catalogues are up to date.**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload i18n comparison
+        if: steps.compare_pot.outputs.changed == 'true' || steps.compare_po.outputs.changed == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: zerotier-i18n-comparison
+          path: |
+            .i18n/generated.pot
+            .i18n/zerotier.pot.diff
+            .i18n/diff/
+            .i18n/files
+            po-work/
+          if-no-files-found: error
+          retention-days: 7
+
+  commit:
+    name: Commit i18n
+    needs: check
+    if: >
+      (needs.check.outputs.pot_changed == 'true' ||
+      needs.check.outputs.po_changed == 'true') &&
+      github.event_name == 'workflow_dispatch' &&
+      inputs.mode == 'check+commit'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          path: applications/luci-app-zerotier
+
+      - name: Download generated i18n files
+        uses: actions/download-artifact@v7
+        with:
+          name: zerotier-i18n-comparison
+          path: artifact
+
+      - name: Update i18n files
+        working-directory: ${{ env.PKG_DIR }}
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.actor }}" = "github-actions[bot]" ]; then
+            echo "Skipping automatic update commit."
+            exit 0
+          fi
+
+          test -f "${GITHUB_WORKSPACE}/artifact/.i18n/generated.pot"
+          test -f "${GITHUB_WORKSPACE}/artifact/.i18n/files"
+
+          cp "${GITHUB_WORKSPACE}/artifact/.i18n/generated.pot" "po/templates/zerotier.pot"
+
+          git add "po/templates/zerotier.pot"
+
+          while IFS= read -r file; do
+            rel="${file#${GITHUB_WORKSPACE}/${PKG_DIR}/po/}"
+            src="${GITHUB_WORKSPACE}/artifact/po-work/${rel}"
+
+            test -f "$src"
+
+            if ! cmp -s "po/${rel}" "$src"; then
+              cp "$src" "po/${rel}"
+              git add "po/${rel}"
+            fi
+          done < "${GITHUB_WORKSPACE}/artifact/.i18n/files"
+
+          if git diff --cached --quiet; then
+            echo "No i18n changes to commit."
+            exit 0
+          fi
+
+          git config user.name "Ser9ei"
+          git config user.email "it4notice@proton.me"
+
+          git commit \
+            -m "i18n: update translation catalogues [by ci]" \
+            -m "Update POT/PO"
+
+          git push
