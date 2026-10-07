@@ -24,15 +24,6 @@ on:
       - '**/*.ut'
 
   workflow_dispatch:
-    inputs:
-      mode:
-        description: "Select action"
-        required: true
-        default: check
-        type: choice
-        options:
-          - check
-          - check+commit
 
 concurrency:
   group: i18n-${{ github.workflow }}-${{ github.ref }}
@@ -50,9 +41,6 @@ jobs:
   check:
     name: Check i18n
     runs-on: ubuntu-latest
-    outputs:
-      pot_changed: ${{ steps.compare_pot.outputs.changed }}
-      po_changed: ${{ steps.compare_po.outputs.changed }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -136,13 +124,22 @@ jobs:
         run: |
           set -euo pipefail
 
+          echo "::group::POT diff"
+          cat .i18n/zerotier.pot.diff
+          echo "::endgroup::"
+
           {
             echo
             echo "### POT update required"
             echo
+            echo "<details>"
+            echo "<summary>Show POT diff</summary>"
+            echo
             echo '```diff'
             cat .i18n/zerotier.pot.diff
             echo '```'
+            echo
+            echo "</details>"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Select PO files
@@ -243,12 +240,22 @@ jobs:
             diff_file=".i18n/diff/${rel}.diff"
 
             if [ -f "$diff_file" ]; then
+
+              echo "::group::PO diff: ${rel}"
+              cat "$diff_file"
+              echo "::endgroup::"
+
               {
                 echo "### ${rel}"
+                echo
+                echo "<details>"
+                echo "<summary>Show diff</summary>"
                 echo
                 echo '```diff'
                 cat "$diff_file"
                 echo '```'
+                echo
+                echo "</details>"
                 echo
               } >> "$GITHUB_STEP_SUMMARY"
             fi
@@ -284,83 +291,69 @@ jobs:
             echo "✅ **POT and PO catalogues are up to date.**"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload i18n comparison
+      - name: Prepare i18n update artifact
         if: steps.compare_pot.outputs.changed == 'true' || steps.compare_po.outputs.changed == 'true'
-        uses: actions/upload-artifact@v7
-        with:
-          name: zerotier-i18n-comparison
-          path: |
-            .i18n/generated.pot
-            .i18n/zerotier.pot.diff
-            .i18n/diff/
-            .i18n/files
-            po-work/
-          if-no-files-found: error
-          retention-days: 7
-
-  commit:
-    name: Commit i18n
-    needs: check
-    if: >
-      (needs.check.outputs.pot_changed == 'true' ||
-      needs.check.outputs.po_changed == 'true') &&
-      github.event_name == 'workflow_dispatch' &&
-      inputs.mode == 'check+commit'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-          path: applications/luci-app-zerotier
-
-      - name: Download generated i18n files
-        uses: actions/download-artifact@v7
-        with:
-          name: zerotier-i18n-comparison
-          path: artifact
-
-      - name: Update i18n files
-        working-directory: ${{ env.PKG_DIR }}
         run: |
           set -euo pipefail
 
-          if [ "${{ github.actor }}" = "github-actions[bot]" ]; then
-            echo "Skipping automatic update commit."
-            exit 0
+          rm -rf .i18n/update
+          mkdir -p .i18n/update/po/templates
+
+          if [ "${{ steps.compare_pot.outputs.changed }}" = "true" ]; then
+            cp ".i18n/generated.pot" \
+              ".i18n/update/po/templates/zerotier.pot"
           fi
-
-          test -f "${GITHUB_WORKSPACE}/artifact/.i18n/generated.pot"
-          test -f "${GITHUB_WORKSPACE}/artifact/.i18n/files"
-
-          cp "${GITHUB_WORKSPACE}/artifact/.i18n/generated.pot" "po/templates/zerotier.pot"
-
-          git add "po/templates/zerotier.pot"
 
           while IFS= read -r file; do
-            rel="${file#${GITHUB_WORKSPACE}/${PKG_DIR}/po/}"
-            src="${GITHUB_WORKSPACE}/artifact/po-work/${rel}"
+            rel="${file#${PKG_DIR}/po/}"
+            work="po-work/${rel}"
 
-            test -f "$src"
-
-            if ! cmp -s "po/${rel}" "$src"; then
-              cp "$src" "po/${rel}"
-              git add "po/${rel}"
+            if [ -f ".i18n/diff/${rel}.diff" ]; then
+              mkdir -p ".i18n/update/po/$(dirname "$rel")"
+              cp "$work" ".i18n/update/po/${rel}"
             fi
-          done < "${GITHUB_WORKSPACE}/artifact/.i18n/files"
+          done < .i18n/files
 
-          if git diff --cached --quiet; then
-            echo "No i18n changes to commit."
-            exit 0
+          echo "i18n update artifact:"
+          find .i18n/update -type f -print | sort
+
+      - name: Upload i18n update
+        if: steps.compare_pot.outputs.changed == 'true' || steps.compare_po.outputs.changed == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: zerotier-i18n-update
+          path: .i18n/update/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Fail if i18n is out of date
+        if: >
+          steps.compare_pot.outputs.changed == 'true' ||
+          steps.compare_po.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+
+          pot_changed="${{ steps.compare_pot.outputs.changed }}"
+          po_changed="${{ steps.compare_po.outputs.changed }}"
+
+          if [ "$pot_changed" = "true" ] && [ "$po_changed" = "true" ]; then
+            status="POT and PO catalogues are not up to date"
+          elif [ "$pot_changed" = "true" ]; then
+            status="POT is not up to date"
+          else
+            status="PO catalogues are not up to date"
           fi
 
-          git config user.name "Ser9ei"
-          git config user.email "it4notice@proton.me"
+          echo "::error::${status}."
 
-          git commit \
-            -m "i18n: update translation catalogues [by ci]" \
-            -m "Update POT/PO"
+          {
+            echo
+            echo "## i18n check result"
+            echo
+            echo "❌ **${status}.**"
+            echo
+            echo "Download the **zerotier-i18n-update** artifact and replace the affected files."
+          } >> "$GITHUB_STEP_SUMMARY"
 
-          git push
+          exit 1
+
