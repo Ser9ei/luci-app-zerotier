@@ -13,6 +13,12 @@
 'require tools.widgets as widgets';
 'require zerotier.status as zt';
 
+const callGetFeatures = rpc.declare({
+	object: 'luci.zerotier',
+	method: 'getFeatures',
+	expect: { '': {} }
+});
+
 const callGetNetworks = rpc.declare({
 	object: 'luci.zerotier',
 	method: 'getNetworks',
@@ -24,6 +30,10 @@ const callGetPeers = rpc.declare({
 	method: 'getPeers',
 	expect: { '': {} }
 });
+
+function hasFeature(features, id) {
+	return Array.isArray(features) && features.indexOf(id) !== -1;
+}
 
 function formatBytes(bytes) {
 	if (bytes === null || bytes === undefined || bytes === '')
@@ -68,16 +78,25 @@ function setSaveActionsVisible(show) {
 
 return view.extend({
 	load() {
-		return callGetNetworks().then(function(res) {
-			res = res || {};
-			const zerotier = res.zerotier || {};
-			const networks = zerotier.networks || [];
-			return Array.isArray(networks) ? networks : [];
-		}).catch(function(err) {
-			ui.addNotification(null, E('p', {},
-				_('Unable to get network info: %s.').format(err.message)));
-			return [];
-		});
+		return Promise.all([
+			callGetFeatures().then(function(res) {
+				res = res || {};
+				const list = res.features;
+				return Array.isArray(list) ? list : [];
+			}).catch(function() {
+				return [];
+			}),
+			callGetNetworks().then(function(res) {
+				res = res || {};
+				const zerotier = res.zerotier || {};
+				const networks = zerotier.networks || [];
+				return Array.isArray(networks) ? networks : [];
+			}).catch(function(err) {
+				ui.addNotification(null, E('p', {},
+					_('Unable to get network info: %s.').format(err.message)));
+				return [];
+			})
+		]);
 	},
 
 	render_network(networkData, index, isLast) {
@@ -201,6 +220,8 @@ return view.extend({
 	},
 
 	render(data) {
+		const features = (data && data[0]) || [];
+		const networks = (data && data[1]) || [];
 		const status = new zt.status();
 		const self = this;
 		const m = new form.Map('zerotier');
@@ -234,21 +255,26 @@ return view.extend({
 			_('Copy the contents of the persistent configuration directory to memory instead of linking it, this avoids writing to flash.'));
 		o.depends({ 'config_path': '', '!reverse': true });
 
-		o = s.option(form.Flag, 'fw_allow_input', _('Allow input traffic'),
-			_('Allow input traffic to the ZeroTier daemon.'));
+		if (hasFeature(features, 'global_fw_allow_input')) {
+			o = s.option(form.Flag, 'fw_allow_input', _('Allow input traffic'),
+				_('Allow input traffic to the ZeroTier daemon.'));
+		}
 
 		s = m.section(form.GridSection, 'network', _('Network configuration'));
 		s.modaltitle = function(section_id) {
 			return section_id ? _('Network - %s').format(section_id) : _('New Network');
 		};
+
 		s.addremove = true;
 		s.rowcolors = true;
 		s.sortable = true;
 		s.nodescriptions = true;
 
-		o = s.option(form.Flag, 'enabled', _('Enable'), _('Join this ZeroTier network when the service is running.'));
-		o.default = o.enabled;
-		o.editable = true;
+		if (hasFeature(features, 'network_enabled')) {
+			o = s.option(form.Flag, 'enabled', _('Enable'), _('Join this ZeroTier network when the service is running.'));
+			o.default = o.enabled;
+			o.editable = true;
+		}
 
 		o = s.option(form.Value, 'id', _('Network ID'),
 			_('A unique 16-digit hexadecimal identifier for a ZeroTier virtual network.') + ' ' +
@@ -283,31 +309,37 @@ return view.extend({
 			_('Allow ZeroTier to set DNS servers.'));
 		o.editable = true;
 
-		o = s.option(form.Flag, 'fw_allow_input', _('Allow input'),
-			_('Allow input traffic from the ZeroTier network.'));
-		o.editable = true;
+		if (hasFeature(features, 'fw_allow_input')) {
+			o = s.option(form.Flag, 'fw_allow_input', _('Allow input'),
+				_('Allow input traffic from the ZeroTier network.'));
+			o.editable = true;
+		}
 
-		o = s.option(form.Flag, 'fw_allow_forward', _('Allow forward'),
-			_('Allow forward traffic from/to the ZeroTier network.'));
-		o.editable = true;
+		if (hasFeature(features, 'fw_allow_forward')) {
+			o = s.option(form.Flag, 'fw_allow_forward', _('Allow forward'),
+				_('Allow forward traffic from/to the ZeroTier network.'));
+			o.editable = true;
 
-		o = s.option(widgets.DeviceSelect, 'fw_forward_ifaces', _('Forward interfaces'),
-			_('Leave empty for all.'));
-		o.multiple = true;
-		o.noaliases = true;
-		o.depends('fw_allow_forward', '1');
-		o.modalonly = true;
+			o = s.option(widgets.DeviceSelect, 'fw_forward_ifaces', _('Forward interfaces'),
+				_('Leave empty for all.'));
+			o.multiple = true;
+			o.noaliases = true;
+			o.depends('fw_allow_forward', '1');
+			o.modalonly = true;
+		}
 
-		o = s.option(form.Flag, 'fw_allow_masq', _('Masquerading'),
-			_('Enable network address and port translation (NAT) for outbound traffic for this network.'));
-		o.editable = true;
+		if (hasFeature(features, 'fw_allow_masq')) {
+			o = s.option(form.Flag, 'fw_allow_masq', _('Masquerading'),
+				_('Enable network address and port translation (NAT) for outbound traffic for this network.'));
+			o.editable = true;
 
-		o = s.option(widgets.DeviceSelect, 'fw_masq_ifaces', _('Masquerade interfaces'),
-			_('Leave empty for all.'));
-		o.multiple = true;
-		o.noaliases = true;
-		o.depends('fw_allow_masq', '1');
-		o.modalonly = true;
+			o = s.option(widgets.DeviceSelect, 'fw_masq_ifaces', _('Masquerade interfaces'),
+				_('Leave empty for all.'));
+			o.multiple = true;
+			o.noaliases = true;
+			o.depends('fw_allow_masq', '1');
+			o.modalonly = true;
+		}
 
 		const tabConfig = E('li', { 'class': 'cbi-tab', 'data-tab': 'config' },
 			E('a', { href: '#' }, _('Configuration')));
@@ -334,7 +366,7 @@ return view.extend({
 			'data-tab': 'networks',
 			'data-tab-active': 'false',
 			'style': 'display:none'
-		}, [ this.renderNetworks(data) ]);
+		}, [ this.renderNetworks(networks) ]);
 
 		const panelPeers = E('div', {
 			'id': 'zerotier-peers',

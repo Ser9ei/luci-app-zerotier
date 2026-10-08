@@ -5,6 +5,7 @@
 			"ubus": {
 				"luci.zerotier": [
 					"getVersion",
+					"getFeatures",
 					"getInitStatus",
 					"getNetworks",
 					"getPeers"

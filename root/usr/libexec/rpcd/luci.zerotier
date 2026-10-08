@@ -6,6 +6,7 @@
 # Tests:
 #   ubus -v list luci.zerotier
 #   ubus -S call luci.zerotier getVersion
+#   ubus -S call luci.zerotier getFeatures
 #   ubus -S call luci.zerotier getInitStatus
 #   ubus -S call luci.zerotier setInitAction '{"action":"restart"}'
 #   ubus -S call luci.zerotier getNetworks
@@ -20,6 +21,16 @@ readonly CONFIG="zerotier"
 readonly ZEROTIER_ONE="/usr/bin/zerotier-one"
 readonly ZEROTIER_CLI="/usr/bin/zerotier-cli"
 readonly LOG_TAG="rpcd:luci.zerotier"
+
+readonly EXTENDENT_FEATURES_IMMORTALWRT="
+global_fw_allow_input:23.05
+network_enabled:23.05
+fw_allow_input:23.05
+fw_allow_forward:23.05
+fw_allow_masq:23.05
+"
+readonly EXTENDENT_FEATURES_OPENWRT="
+"
 
 log()
 {
@@ -36,6 +47,73 @@ json_error()
 	json_init
 	json_add_boolean "result" 0
 	json_add_string "error" "$1"
+	json_dump
+	json_cleanup
+}
+
+major_version_ge() { [ "${1%%.*}" -ge "${2%%.*}" ]; }
+
+get_system_features()
+{
+	local _dump distribution version _table _item _feat _min _result
+
+	_dump="$(ubus call system board 2>/dev/null)" || return 1
+	
+	json_init
+	json_load "$_dump" || { json_cleanup; echo ""; return 1; }
+	json_select release 2>/dev/null || { json_cleanup; echo ""; return 1; }
+	json_get_vars distribution version
+	json_select ..
+	json_cleanup
+
+	distribution="$(printf '%s' "$distribution" | tr 'A-Z' 'a-z')"
+	case "$version" in
+		SNAPSHOT*|snapshot*) version="99" ;;
+		""|*[!0-9.]*) version="0" ;;
+	esac
+
+	case "$distribution" in
+		immortalwrt) _table="$EXTENDENT_FEATURES_IMMORTALWRT" ;;
+		*) _table="$EXTENDENT_FEATURES_OPENWRT" ;;
+	esac
+
+	for _item in $_table; do
+		[ -n "$_item" ] || continue
+		_feat="${_item%%:*}"
+		_min="${_item#*:}"
+		major_version_ge "$version" "$_min" && _result="${_result:+$_result }$_feat"
+	done
+	echo "$_result"
+}
+
+get_features()
+{
+	local _active _extra _item
+	local _official="$(get_system_features)"
+
+	for _item in $_official; do
+		[ -n "$_item" ] || continue
+		case " ${_active} " in
+			*" ${_item} "*) ;;
+			*) _active="${_active:+$_active }$_item" ;;
+		esac
+	done
+
+	_extra="$(uci -q -d ' ' get "${CONFIG}.global.features" 2>/dev/null)"
+	for _item in $_extra; do
+		[ -n "$_item" ] || continue
+		case " ${_active} " in
+			*" ${_item} "*) ;;
+			*) _active="${_active:+$_active }$_item" ;;
+		esac
+	done
+
+	json_init
+	json_add_array "features"
+	for _item in $_active; do
+		[ -n "$_item" ] && json_add_string "" "$_item"
+	done
+	json_close_array
 	json_dump
 	json_cleanup
 }
@@ -318,6 +396,9 @@ case "$1" in
 		json_add_object "getVersion"
 		json_close_object
 
+		json_add_object "getFeatures"
+		json_close_object
+
 		json_add_object "getInitStatus"
 		json_close_object
 
@@ -338,6 +419,9 @@ case "$1" in
 		case "$2" in
 			getVersion)
 				get_version
+				;;
+			getFeatures)
+				get_features
 				;;
 			getInitStatus)
 				get_init_status
