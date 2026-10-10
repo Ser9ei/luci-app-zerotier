@@ -127,7 +127,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up LuCI feed structure
         run: |
@@ -161,7 +161,7 @@ jobs:
           echo "Using ARCH=${{ matrix.target }}-${{ matrix.sdk }}"
 
       - name: Build with OpenWrt SDK
-        uses: openwrt/gh-action-sdk@v8
+        uses: openwrt/gh-action-sdk@v11
         env:
           ARCH: ${{ env.ARCH }}
           FEEDNAME: zerotier
