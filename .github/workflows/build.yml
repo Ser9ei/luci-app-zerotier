@@ -220,7 +220,7 @@ jobs:
         uses: openwrt/gh-action-sdk@7fc2640243284ecc44f4a9c3f749a61746ee02cb # v11
         env:
           ARCH: ${{ env.ARCH }}
-          FEEDNAME: ${{ env.PKG_NAME }}
+          FEEDNAME: local
           PACKAGES: ${{ env.PKG_NAME }}
           INDEX: 0
           FEED_DIR: ${{ github.workspace }}/feed
