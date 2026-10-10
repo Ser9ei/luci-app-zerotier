@@ -1,0 +1,106 @@
+name: "ShellCheck (POSIX sh / BusyBox ash)"
+
+on:
+  push:
+    branches: [ "master" ]
+    paths:
+      - '**/*.sh'
+      - 'root/usr/libexec/rpcd/**'
+      - 'root/etc/uci-defaults/**'
+
+  pull_request:
+    branches: [ "master" ]
+    paths:
+      - '**/*.sh'
+      - 'root/usr/libexec/rpcd/**'
+      - 'root/etc/uci-defaults/**'
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install ShellCheck
+        env:
+          SHELLCHECK_VERSION: v0.11.0
+          SHELLCHECK_SHA256: 8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+        run: |
+          set -euo pipefail
+
+          archive="shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+          url="https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/${archive}"
+          archive_path="${RUNNER_TEMP}/${archive}"
+
+          echo "Downloading ShellCheck ${SHELLCHECK_VERSION}..."
+          curl --fail --silent --show-error --location \
+            "$url" \
+            --output "$archive_path"
+
+          echo "Verifying SHA-256..."
+          echo "${SHELLCHECK_SHA256}  ${archive_path}" | sha256sum --check
+
+          echo "Extracting ShellCheck..."
+          tar -xJf "$archive_path" -C "$RUNNER_TEMP"
+
+          sudo install \
+            "${RUNNER_TEMP}/shellcheck-${SHELLCHECK_VERSION}/shellcheck" \
+            /usr/local/bin/shellcheck
+
+          installed_version="$(
+            shellcheck --version |
+              awk '/^version:/ { print $2 }'
+          )"
+
+          expected_version="${SHELLCHECK_VERSION#v}"
+
+          if [ "$installed_version" != "$expected_version" ]; then
+            echo "::error::Expected ShellCheck ${expected_version}, got ${installed_version}"
+            exit 1
+          fi
+
+          echo "ShellCheck ${installed_version} installed and verified."
+
+      - name: Run ShellCheck
+        run: |
+          set -euo pipefail
+          mapfile -d '' -t SH_FILES < <(
+            git ls-files -z -- \
+              ':(glob)**/*.sh' \
+              ':(glob)root/usr/libexec/rpcd/**' \
+              ':(glob)root/etc/uci-defaults/**'
+          )
+
+          if [ "${#SH_FILES[@]}" -eq 0 ]; then
+            echo "No shell scripts found."
+            {
+              echo "## ShellCheck"
+              echo
+              echo "_No shell scripts found._"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "Checking ${#SH_FILES[@]} script(s):"
+          printf '  %s\n' "${SH_FILES[@]}"
+
+          {
+            echo "## ShellCheck"
+            echo
+            echo "Checked **${#SH_FILES[@]}** file(s) (\`busybox\` dialect):"
+            echo
+            for f in "${SH_FILES[@]}"; do
+              echo "- \`$f\`"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          shellcheck --shell=busybox "${SH_FILES[@]}"
