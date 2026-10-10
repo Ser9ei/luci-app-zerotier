@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           path: applications/luci-app-zerotier
@@ -58,7 +58,7 @@ jobs:
             libtext-balanced-perl
 
       - name: Checkout LuCI i18n tools
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: openwrt/luci
           ref: ${{ env.LUCI_VERSION }}
