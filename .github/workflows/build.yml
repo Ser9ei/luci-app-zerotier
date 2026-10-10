@@ -9,10 +9,18 @@ on:
       - 'Makefile'
       - 'po/**'
 
+  pull_request:
+    branches: [ "master" ]
+    paths:
+      - 'htdocs/**'
+      - 'root/**'
+      - 'Makefile'
+      - 'po/**'
+
   workflow_dispatch:
     inputs:
       mode:
-        description: "Select build mode: normal or fast (skip ZeroTier build dependency)"
+        description: "Select build mode: normal or fast (skip functional package build dependency)"
         required: true
         default: normal
         type: choice
@@ -39,6 +47,7 @@ jobs:
   prepare:
     name: Prepare matrix
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       matrix: ${{ steps.set.outputs.matrix }}
       mode: ${{ steps.set.outputs.mode }}
@@ -48,6 +57,9 @@ jobs:
         env:
           SDK_VERSIONS: ${{ vars.CI_OPENWRT_SDK_VERSIONS }}
           RELEASE: ${{ vars.CI_OPENWRT_RELEASE }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_OPENWRT_VERSION: ${{ inputs.openwrt_version }}
+          INPUT_MODE: ${{ inputs.mode }}
         run: |
           set -euo pipefail
 
@@ -59,12 +71,12 @@ jobs:
             VERSIONS=($SDK_VERSIONS)
           fi
 
-          if [ "${{ github.event_name }}" = "push" ]; then
+          if [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "pull_request" ]; then
             SELECTED="last"
             MODE="fast"
           else
-            SELECTED="${{ inputs.openwrt_version }}"
-            MODE="${{ inputs.mode }}"
+            SELECTED="$INPUT_OPENWRT_VERSION"
+            MODE="$INPUT_MODE"
           fi
 
           build_entry() {
@@ -118,36 +130,77 @@ jobs:
     name: Build ${{ matrix.version }} (${{ matrix.sdk }})
     needs: prepare
     runs-on: ubuntu-latest
-    env:
-      PKG_NAME: luci-app-zerotier
-      DEBUG_PACKAGES: "0"
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
 
     steps:
+      - name: Validate package variables
+        env:
+          CI_PACKAGE_NAME: ${{ vars.CI_PACKAGE_NAME }}
+          CI_PACKAGE_DIR: ${{ vars.CI_PACKAGE_DIR }}
+          CI_PACKAGE_I18N_PREFIX: ${{ vars.CI_PACKAGE_I18N_PREFIX }}
+        run: |
+          set -euo pipefail
+
+          name="${CI_PACKAGE_NAME:-}"
+          dir="${CI_PACKAGE_DIR:-}"
+          dir="${dir%/}"
+          prefix="${CI_PACKAGE_I18N_PREFIX:-}"
+
+          fail=0
+          comp='[A-Za-z0-9][A-Za-z0-9._-]*'
+          check() {
+            local kind="$1" label="$2" value="$3" re
+            if [ "$kind" = path ]; then re="^${comp}(/${comp})*$"; else re="^${comp}$"; fi
+            if [ -z "$value" ]; then
+              echo "::error::GitHub Actions variable ${label} is not set."
+              fail=1
+            elif ! [[ "$value" =~ $re ]]; then
+              echo "::error::Variable ${label} must be a relative ${kind} of letters, digits, '.', '_', '-' (got '${value}')."
+              fail=1
+            fi
+          }
+          check name CI_PACKAGE_NAME "$name"
+          check path CI_PACKAGE_DIR "$dir"
+          check name CI_PACKAGE_I18N_PREFIX "$prefix"
+          [ "$fail" -eq 0 ] || exit 1
+
+          dir="${dir%/}"
+          if [ "$(basename "$dir")" != "$name" ]; then
+            dir="${dir}/${name}"
+          fi
+
+          {
+            echo "PKG_NAME=${name}"
+            echo "PKG_DIR=${dir}"
+            echo "I18N_PREFIX=${prefix}"
+          } >> "$GITHUB_ENV"
+
+          echo "PKG_NAME=${name} PKG_DIR=${dir} I18N_PREFIX=${prefix}"
+
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up LuCI feed structure
         run: |
           set -euo pipefail
           mkdir -p package
           printf 'include $(TOPDIR)/feeds/luci/luci.mk\n' > package/luci.mk
-          mkdir -p "feed/luci/applications/${PKG_NAME}"
-          mkdir -p feed/luci
+          mkdir -p "feed/luci/${PKG_DIR}"
           printf 'include $(TOPDIR)/feeds/luci/luci.mk\n' > feed/luci/luci.mk
           rsync -av \
             --exclude='.git' \
             --exclude='feed' \
             --exclude='.github' \
-            ./ "feed/luci/applications/${PKG_NAME}/"
+            ./ "feed/luci/${PKG_DIR}/"
 
       - name: Patch Makefile for fast build
         if: needs.prepare.outputs.mode == 'fast'
         run: |
           set -euo pipefail
-          MF="feed/luci/applications/${PKG_NAME}/Makefile"
+          MF="feed/luci/${PKG_DIR}/Makefile"
           if grep -qE '^LUCI_DEPENDS[[:space:]]*[:?+]*=' "$MF"; then
             sed -i '/^LUCI_DEPENDS[[:space:]]*[:?+]*=/d' "$MF"
             echo "fast: removed LUCI_DEPENDS"
@@ -156,28 +209,28 @@ jobs:
           fi
 
       - name: Compute ARCH
+        env:
+          MATRIX_TARGET: ${{ matrix.target }}
+          MATRIX_SDK: ${{ matrix.sdk }}
         run: |
-          echo "ARCH=${{ matrix.target }}-${{ matrix.sdk }}" >> "$GITHUB_ENV"
-          echo "Using ARCH=${{ matrix.target }}-${{ matrix.sdk }}"
+          echo "ARCH=${MATRIX_TARGET}-${MATRIX_SDK}" >> "$GITHUB_ENV"
+          echo "Using ARCH=${MATRIX_TARGET}-${MATRIX_SDK}"
 
       - name: Build with OpenWrt SDK
-        uses: openwrt/gh-action-sdk@v11
+        uses: openwrt/gh-action-sdk@7fc2640243284ecc44f4a9c3f749a61746ee02cb # v11
         env:
           ARCH: ${{ env.ARCH }}
-          FEEDNAME: zerotier
+          FEEDNAME: ${{ env.PKG_NAME }}
           PACKAGES: ${{ env.PKG_NAME }}
           INDEX: 0
           FEED_DIR: ${{ github.workspace }}/feed
           NO_SHFMT_CHECK: 1
           NO_REFRESH_CHECK: 1
 
-      - name: Debug packages tree
-        if: env.DEBUG_PACKAGES == '1'
-        run: |
-          find bin -type f \( -name '*.ipk' -o -name '*.apk' \) 2>/dev/null | head -100 || true
-          ls -laR bin/packages 2>/dev/null | head -200 || true
-
       - name: Collect and rename packages
+        env:
+          MATRIX_VERSION: ${{ matrix.version }}
+          MATRIX_SUFFIX: ${{ matrix.suffix }}
         run: |
           set -euo pipefail
           PKG_VERSION=$(grep -E '^PKG_VERSION *:?=' Makefile | head -n1 | cut -d= -f2 | tr -d '[:space:]')
@@ -191,11 +244,11 @@ jobs:
             while IFS= read -r -d '' f; do
               base=$(basename "$f")
               case "$base" in
-                luci-app-zerotier*|luci-i18n-zerotier*)
-                  if [[ "$base" == luci-app-zerotier* ]]; then
-                    out="${PKG_NAME}-${PKG_VERSION}-${REL}_${{ matrix.version }}_${{ matrix.suffix }}.${ext}"
+                "${PKG_NAME}"*|"luci-i18n-${I18N_PREFIX}"*)
+                  if [[ "$base" == "${PKG_NAME}"* ]]; then
+                    out="${PKG_NAME}-${PKG_VERSION}-${REL}_${MATRIX_VERSION}_${MATRIX_SUFFIX}.${ext}"
                   else
-                    out="${base%.*}_${{ matrix.version }}.${ext}"
+                    out="${base%.*}_${MATRIX_VERSION}.${ext}"
                   fi
                   cp -a "$f" "upload/$out"
                   echo "collected $out"
@@ -209,7 +262,7 @@ jobs:
           test -n "$(ls -A upload 2>/dev/null)"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: ${{ env.PKG_NAME }}-${{ matrix.version }}
           path: upload/*

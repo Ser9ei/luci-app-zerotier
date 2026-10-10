@@ -4,7 +4,7 @@ import markdown from "@eslint/markdown";
 import json from '@eslint/json';
 import js from '@eslint/js';
 
-console.log('loaded luci eslint.config.mjs');
+//console.log('loaded luci eslint.config.mjs');
 
 export default defineConfig([
 	globalIgnores([
@@ -116,7 +116,7 @@ export default defineConfig([
 			'strict': 0,
 			'no-prototype-builtins': 0,
 			'no-empty': 0,
-			'no-undef': 'warn',
+			'no-undef': 'error',
 			'no-unused-vars': ['off', { "caughtErrors": "none" }],
 			'no-regex-spaces': 0,
 			'no-control-regex': 0,

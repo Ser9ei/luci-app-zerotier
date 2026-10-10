@@ -32,21 +32,81 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  LUCI_VERSION: openwrt-${{ vars.CI_OPENWRT_RELEASE }}
-  PKG_DIR: applications/luci-app-zerotier
-  POT_FILE: applications/luci-app-zerotier/po/templates/zerotier.pot
-
 jobs:
   check:
     name: Check i18n
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
+      - name: Validate variables and LuCI release
+        env:
+          CI_OPENWRT_RELEASE: ${{ vars.CI_OPENWRT_RELEASE }}
+          CI_PACKAGE_NAME: ${{ vars.CI_PACKAGE_NAME }}
+          CI_PACKAGE_DIR: ${{ vars.CI_PACKAGE_DIR }}
+          CI_PACKAGE_I18N_PREFIX: ${{ vars.CI_PACKAGE_I18N_PREFIX }}
+        run: |
+          set -euo pipefail
+
+          release="${CI_OPENWRT_RELEASE:-}"
+          name="${CI_PACKAGE_NAME:-}"
+          dir="${CI_PACKAGE_DIR:-}"
+          dir="${dir%/}"
+          prefix="${CI_PACKAGE_I18N_PREFIX:-}"
+
+          fail=0
+          comp='[A-Za-z0-9][A-Za-z0-9._-]*'
+          check() {
+            local kind="$1" label="$2" value="$3" re
+            if [ "$kind" = path ]; then re="^${comp}(/${comp})*$"; else re="^${comp}$"; fi
+            if [ -z "$value" ]; then
+              echo "::error::GitHub Actions variable ${label} is not set."
+              fail=1
+            elif ! [[ "$value" =~ $re ]]; then
+              echo "::error::Variable ${label} must be a relative ${kind} of letters, digits, '.', '_', '-' (got '${value}')."
+              fail=1
+            fi
+          }
+          check name CI_OPENWRT_RELEASE "$release"
+          check name CI_PACKAGE_NAME "$name"
+          check path CI_PACKAGE_DIR "$dir"
+          check name CI_PACKAGE_I18N_PREFIX "$prefix"
+          [ "$fail" -eq 0 ] || exit 1
+
+          dir="${dir%/}"
+          if [ "$(basename "$dir")" != "$name" ]; then
+            dir="${dir}/${name}"
+          fi
+
+          if [ "$release" = "SNAPSHOT" ]; then
+            ref="master"
+          elif [[ "$release" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            ref="openwrt-${release%.*}"
+          else
+            ref="openwrt-${release}"
+          fi
+
+          if ! git ls-remote --exit-code --heads \
+            https://github.com/openwrt/luci.git \
+            "refs/heads/${ref}" >/dev/null; then
+            echo "::error::LuCI branch '${ref}' does not exist or cannot be accessed."
+            exit 1
+          fi
+          echo "Validated LuCI branch: ${ref}"
+
+          {
+            echo "PKG_NAME=${name}"
+            echo "PKG_DIR=${dir}"
+            echo "I18N_PREFIX=${prefix}"
+            echo "POT_FILE=${dir}/po/templates/${prefix}.pot"
+            echo "LUCI_REF=${ref}"
+          } >> "$GITHUB_ENV"
+
+          echo "PKG_NAME=${name} PKG_DIR=${dir} I18N_PREFIX=${prefix}"
+
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
-          path: applications/luci-app-zerotier
+          path: ${{ env.PKG_DIR }}
 
       - name: Install gettext and Perl dependencies
         run: |
@@ -58,10 +118,10 @@ jobs:
             libtext-balanced-perl
 
       - name: Checkout LuCI i18n tools
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: openwrt/luci
-          ref: ${{ env.LUCI_VERSION }}
+          ref: ${{ env.LUCI_REF }}
           path: luci
           sparse-checkout: |
             build/i18n-scan.pl
@@ -109,7 +169,7 @@ jobs:
 
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
-          diff -u "${POT_FILE}" ".i18n/generated.pot" > .i18n/zerotier.pot.diff || true
+          diff -u "${POT_FILE}" ".i18n/generated.pot" > ".i18n/${I18N_PREFIX}.pot.diff" || true
 
           echo "::warning::Translation template is not up to date."
 
@@ -125,7 +185,7 @@ jobs:
           set -euo pipefail
 
           echo "::group::POT diff"
-          cat .i18n/zerotier.pot.diff
+          cat ".i18n/${I18N_PREFIX}.pot.diff"
           echo "::endgroup::"
 
           {
@@ -136,7 +196,7 @@ jobs:
             echo "<summary>Show POT diff</summary>"
             echo
             echo '```diff'
-            cat .i18n/zerotier.pot.diff
+            cat ".i18n/${I18N_PREFIX}.pot.diff"
             echo '```'
             echo
             echo "</details>"
@@ -172,7 +232,7 @@ jobs:
           rm -rf po-work
 
           cp -a "${PKG_DIR}/po" po-work
-          cp ".i18n/generated.pot" po-work/templates/zerotier.pot
+          cp ".i18n/generated.pot" "po-work/templates/${I18N_PREFIX}.pot"
 
           echo "Synchronizing PO files..."
 
@@ -188,7 +248,7 @@ jobs:
           changed=false
 
           while IFS= read -r file; do
-            rel="${file#${PKG_DIR}/po/}"
+            rel="${file#"${PKG_DIR}"/po/}"
             work="po-work/${rel}"
             diff_file=".i18n/diff/${rel}.diff"
 
@@ -216,10 +276,11 @@ jobs:
             echo "|---|---:|---:|---:|"
 
             while IFS= read -r file; do
-              total=$(msgattrib --no-obsolete --no-fuzzy "$file" | grep -c '^msgid ' || true)
-              untranslated=$(msgattrib --untranslated --no-obsolete --no-fuzzy "$file" | grep -c '^msgid ' || true)
-              fuzzy=$(msgattrib --only-fuzzy --no-obsolete "$file" | grep -c '^msgid ' || true)
-              rel="${file#${PKG_DIR}/po/}"
+              total=$(msgattrib --no-obsolete --no-fuzzy "$file" | grep -cE '^msgid ".+"' || true)
+              untranslated=$(msgattrib --untranslated --no-obsolete --no-fuzzy "$file" | grep -cE '^msgid ".+"' || true)
+              fuzzy=$(msgattrib --only-fuzzy --no-obsolete "$file" | grep -cE '^msgid ".+"' || true)
+
+              rel="${file#"${PKG_DIR}"/po/}"
               echo "| \`${rel}\` | ${total} | ${untranslated} | ${fuzzy} |"
             done < .i18n/files
           } >> "$GITHUB_STEP_SUMMARY"
@@ -236,11 +297,10 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           while IFS= read -r file; do
-            rel="${file#${PKG_DIR}/po/}"
+            rel="${file#"${PKG_DIR}"/po/}"
             diff_file=".i18n/diff/${rel}.diff"
 
             if [ -f "$diff_file" ]; then
-
               echo "::group::PO diff: ${rel}"
               cat "$diff_file"
               echo "::endgroup::"
@@ -279,33 +339,23 @@ jobs:
 
           echo "PO catalogues are up to date."
 
-      - name: Show i18n status
-        if: steps.compare_pot.outputs.changed == 'false' && steps.compare_po.outputs.changed == 'false'
-        run: |
-          set -euo pipefail
-
-          {
-            echo
-            echo "## i18n check"
-            echo
-            echo "✅ **POT and PO catalogues are up to date.**"
-          } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Prepare i18n update artifact
         if: steps.compare_pot.outputs.changed == 'true' || steps.compare_po.outputs.changed == 'true'
+        env:
+          POT_CHANGED: ${{ steps.compare_pot.outputs.changed }}
         run: |
           set -euo pipefail
 
           rm -rf .i18n/update
           mkdir -p .i18n/update/po/templates
 
-          if [ "${{ steps.compare_pot.outputs.changed }}" = "true" ]; then
+          if [ "$POT_CHANGED" = "true" ]; then
             cp ".i18n/generated.pot" \
-              ".i18n/update/po/templates/zerotier.pot"
+              ".i18n/update/po/templates/${I18N_PREFIX}.pot"
           fi
 
           while IFS= read -r file; do
-            rel="${file#${PKG_DIR}/po/}"
+            rel="${file#"${PKG_DIR}"/po/}"
             work="po-work/${rel}"
 
             if [ -f ".i18n/diff/${rel}.diff" ]; then
@@ -319,9 +369,9 @@ jobs:
 
       - name: Upload i18n update
         if: steps.compare_pot.outputs.changed == 'true' || steps.compare_po.outputs.changed == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: zerotier-i18n-update
+          name: ${{ env.I18N_PREFIX }}-i18n-update
           path: .i18n/update/
           if-no-files-found: error
           retention-days: 7
@@ -330,15 +380,15 @@ jobs:
         if: >
           steps.compare_pot.outputs.changed == 'true' ||
           steps.compare_po.outputs.changed == 'true'
+        env:
+          POT_CHANGED: ${{ steps.compare_pot.outputs.changed }}
+          PO_CHANGED: ${{ steps.compare_po.outputs.changed }}
         run: |
           set -euo pipefail
 
-          pot_changed="${{ steps.compare_pot.outputs.changed }}"
-          po_changed="${{ steps.compare_po.outputs.changed }}"
-
-          if [ "$pot_changed" = "true" ] && [ "$po_changed" = "true" ]; then
+          if [ "$POT_CHANGED" = "true" ] && [ "$PO_CHANGED" = "true" ]; then
             status="POT and PO catalogues are not up to date"
-          elif [ "$pot_changed" = "true" ]; then
+          elif [ "$POT_CHANGED" = "true" ]; then
             status="POT is not up to date"
           else
             status="PO catalogues are not up to date"
@@ -352,8 +402,7 @@ jobs:
             echo
             echo "❌ **${status}.**"
             echo
-            echo "Download the **zerotier-i18n-update** artifact and replace the affected files."
+            echo "Download the **${I18N_PREFIX}-i18n-update** artifact and replace the affected files."
           } >> "$GITHUB_STEP_SUMMARY"
 
           exit 1
-
