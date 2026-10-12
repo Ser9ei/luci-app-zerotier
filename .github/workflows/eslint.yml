@@ -51,14 +51,7 @@ jobs:
           node-version: latest
 
       - name: Install ESLint
-        run: |
-          npm install --no-audit --no-fund --save-dev \
-            eslint@9 \
-            globals \
-            @eslint/json@latest \
-            @eslint/js@9 \
-            @eslint/markdown \
-            eslint-formatter-gha
+        run: npm install --no-audit --no-fund
 
       - name: Run ESLint
         env:
@@ -81,7 +74,7 @@ jobs:
           fi
 
           list_all() {
-            git ls-files -z -- '*.js' '*.json' '*.md' > "$LIST"
+            git ls-files -z -- '*.js' '*.json' '*.md' ':(exclude)package-lock.json' > "$LIST"
           }
 
           if [ "$SCOPE" = "all" ]; then
@@ -120,7 +113,7 @@ jobs:
             else
               # Written to a file so that a failing git diff fails the step (not hidden by process substitution).
               git diff --diff-filter=ACMR --name-only -z \
-                "$BASE" "$HEAD" -- '*.js' '*.json' '*.md' > "$LIST"
+                "$BASE" "$HEAD" -- '*.js' '*.json' '*.md' ':(exclude)package-lock.json' > "$LIST"
             fi
           fi
 
@@ -128,10 +121,74 @@ jobs:
 
           if [ "${#FILES[@]}" -eq 0 ]; then
             echo "No JS/JSON or MD files to lint"
+            {
+              echo "## ESLint"
+              echo
+              echo "_No JS/JSON/MD files to lint._"
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
           echo "Linting files:"
           printf '  %s\n' "${FILES[@]}"
 
-          npx eslint --config .github/eslint.config.mjs --format gha "${FILES[@]}"
+          REPORT="${RUNNER_TEMP}/eslint-report.json"
+          ERRLOG="${RUNNER_TEMP}/eslint-stderr.log"
+          rm -f "$REPORT" "$ERRLOG"
+
+          # Exit codes: 0 = clean, 1 = lint problems, 2 = ESLint itself failed.
+          rc=0
+          npx eslint --config .github/eslint.config.mjs \
+            --format json --output-file "$REPORT" "${FILES[@]}" 2> "$ERRLOG" || rc=$?
+
+          # Second pass only for the console output and the inline annotations.
+          if [ "$rc" -eq 1 ]; then
+            npx eslint --config .github/eslint.config.mjs --format gha "${FILES[@]}" || true
+          elif [ "$rc" -ne 0 ]; then
+            cat "$ERRLOG" >&2
+          fi
+
+          {
+            echo "## ESLint"
+            echo
+            echo "Checked **${#FILES[@]}** file(s) (scope: \`${SCOPE}\`)."
+            echo
+
+            if [ "$rc" -eq 0 ]; then
+              echo "✅ **No problems found.**"
+            elif [ "$rc" -eq 1 ] && [ -s "$REPORT" ]; then
+              errors="$(jq '[.[].errorCount] | add // 0' "$REPORT")"
+              warnings="$(jq '[.[].warningCount] | add // 0' "$REPORT")"
+              echo "❌ **${errors} error(s), ${warnings} warning(s).**"
+              echo
+              echo "<details>"
+              echo "<summary>Problems (first 100)</summary>"
+              echo
+              echo "| Location | Severity | Rule | Message |"
+              echo "|---|---|---|---|"
+              jq -r --arg root "${GITHUB_WORKSPACE}/" '
+                def esc: gsub("&"; "&amp;") | gsub("<"; "&lt;") | gsub(">"; "&gt;")
+                         | gsub("\\|"; "\\|") | gsub("[\r\n]+"; " ");
+                .[] | .filePath as $f | .messages[]
+                | "| `\($f | ltrimstr($root))`:\(.line // 0):\(.column // 0)"
+                  + " | \(if .severity == 2 then "error" else "warning" end)"
+                  + " | \(.ruleId // "-")"
+                  + " | \(.message | esc) |"' "$REPORT" | head -n 100
+              echo
+              echo "</details>"
+            else
+              echo "❌ **ESLint failed to run (exit code ${rc}).**"
+              echo
+              echo "<details>"
+              echo "<summary>Output</summary>"
+              echo
+              echo '```text'
+              # shellcheck disable=SC2016
+              tail -n 40 "$ERRLOG" | sed 's/```/` ` `/g' || true
+              echo '```'
+              echo
+              echo "</details>"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit "$rc"

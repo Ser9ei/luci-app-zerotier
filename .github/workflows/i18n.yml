@@ -40,50 +40,75 @@ jobs:
     steps:
       - name: Validate variables and LuCI release
         env:
-          CI_OPENWRT_RELEASE: ${{ vars.CI_OPENWRT_RELEASE }}
-          CI_PACKAGE_NAME: ${{ vars.CI_PACKAGE_NAME }}
-          CI_PACKAGE_DIR: ${{ vars.CI_PACKAGE_DIR }}
-          CI_PACKAGE_I18N_PREFIX: ${{ vars.CI_PACKAGE_I18N_PREFIX }}
+          CI_OPENWRT_SDK_VERSIONS: ${{ vars.CI_OPENWRT_SDK_VERSIONS }}
+          CI_PACKAGE: ${{ vars.CI_PACKAGE }}
+          CI_PACKAGE_PREFIX: ${{ vars.CI_PACKAGE_PREFIX }}
         run: |
           set -euo pipefail
 
-          release="${CI_OPENWRT_RELEASE:-}"
-          name="${CI_PACKAGE_NAME:-}"
-          dir="${CI_PACKAGE_DIR:-}"
-          dir="${dir%/}"
-          prefix="${CI_PACKAGE_I18N_PREFIX:-}"
+          pkg="${CI_PACKAGE:-}"
+          prefix="${CI_PACKAGE_PREFIX:-}"
 
           fail=0
-          comp='[A-Za-z0-9][A-Za-z0-9._-]*'
-          check() {
-            local kind="$1" label="$2" value="$3" re
-            if [ "$kind" = path ]; then re="^${comp}(/${comp})*$"; else re="^${comp}$"; fi
-            if [ -z "$value" ]; then
-              echo "::error::GitHub Actions variable ${label} is not set."
+          if [ -z "$pkg" ]; then
+            echo "::error::GitHub Actions variable CI_PACKAGE is not set (e.g. zerotier)."
+            fail=1
+          elif ! [[ "$pkg" =~ ^[a-z0-9][a-z0-9._-]*$ ]]; then
+            echo "::error::CI_PACKAGE must be lowercase letters, digits, '.', '_', '-' (got '${pkg}')."
+            fail=1
+          fi
+
+          # The prefix selects the directory in the openwrt/luci tree.
+          # Add new package types here (and only here) when they appear.
+          case "$prefix" in
+            luci-app)   category="applications" ;;
+            luci-proto) category="protocols" ;;
+            luci-theme) category="themes" ;;
+            luci-mod)   category="modules" ;;
+            luci-lib)   category="libs" ;;
+            "")
+              echo "::error::GitHub Actions variable CI_PACKAGE_PREFIX is not set (e.g. luci-app)."
               fail=1
-            elif ! [[ "$value" =~ $re ]]; then
-              echo "::error::Variable ${label} must be a relative ${kind} of letters, digits, '.', '_', '-' (got '${value}')."
+              ;;
+            *)
+              echo "::error::Unsupported CI_PACKAGE_PREFIX '${prefix}' (supported: luci-app, luci-proto, luci-theme, luci-mod, luci-lib)."
               fail=1
-            fi
-          }
-          check name CI_OPENWRT_RELEASE "$release"
-          check name CI_PACKAGE_NAME "$name"
-          check path CI_PACKAGE_DIR "$dir"
-          check name CI_PACKAGE_I18N_PREFIX "$prefix"
+              ;;
+          esac
           [ "$fail" -eq 0 ] || exit 1
 
-          dir="${dir%/}"
-          if [ "$(basename "$dir")" != "$name" ]; then
-            dir="${dir}/${name}"
+          # luci.mk names the translation package luci-i18n-<pkg>-<lang>
+          # and the template po/templates/<pkg>.pot.
+          name="${prefix}-${pkg}"
+          dir="${category}/${name}"
+          i18n="${pkg}"
+
+          # Same rule as build.yml: the newest numbered release in
+          # CI_OPENWRT_SDK_VERSIONS (SNAPSHOT only if nothing else is listed).
+          versions="${CI_OPENWRT_SDK_VERSIONS:-}"
+          if [ -z "${versions// }" ]; then
+            echo "::warning::CI_OPENWRT_SDK_VERSIONS is empty — using LuCI master"
+            versions="SNAPSHOT"
           fi
 
-          if [ "$release" = "SNAPSHOT" ]; then
+          # shellcheck disable=SC2206
+          list=($versions)
+          for v in "${list[@]}"; do
+            if ! [[ "$v" =~ ^([0-9]+\.[0-9]+\.[0-9]+|SNAPSHOT)$ ]]; then
+              echo "::error::Invalid entry '${v}' in CI_OPENWRT_SDK_VERSIONS (expected e.g. 25.12.5 or SNAPSHOT)."
+              exit 1
+            fi
+          done
+
+          last="$(printf '%s\n' "${list[@]}" | { grep -v '^SNAPSHOT$' || true; } | sort -V | tail -n1)"
+          last="${last:-SNAPSHOT}"
+
+          if [ "$last" = "SNAPSHOT" ]; then
             ref="master"
-          elif [[ "$release" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            ref="openwrt-${release%.*}"
           else
-            ref="openwrt-${release}"
+            ref="openwrt-${last%.*}"
           fi
+          echo "Newest release in CI_OPENWRT_SDK_VERSIONS: ${last} -> LuCI branch ${ref}"
 
           if ! git ls-remote --exit-code --heads \
             https://github.com/openwrt/luci.git \
@@ -96,12 +121,12 @@ jobs:
           {
             echo "PKG_NAME=${name}"
             echo "PKG_DIR=${dir}"
-            echo "I18N_PREFIX=${prefix}"
-            echo "POT_FILE=${dir}/po/templates/${prefix}.pot"
+            echo "I18N_PREFIX=${i18n}"
+            echo "POT_FILE=${dir}/po/templates/${i18n}.pot"
             echo "LUCI_REF=${ref}"
           } >> "$GITHUB_ENV"
 
-          echo "PKG_NAME=${name} PKG_DIR=${dir} I18N_PREFIX=${prefix}"
+          echo "PKG_NAME=${name} PKG_DIR=${dir} I18N_PREFIX=${i18n}"
 
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -269,19 +294,28 @@ jobs:
         run: |
           set -euo pipefail
 
+          # stat <msgfmt output> <word>: number in front of "<word>", or 0.
+          stat() {
+            local n
+            n="$(sed -nE "s/.*\b([0-9]+) $2.*/\1/p" <<<"$1" | head -n1)"
+            echo "${n:-0}"
+          }
+
           {
             echo "## PO statistics"
             echo
-            echo "| File | Total | Untranslated | Fuzzy |"
-            echo "|---|---:|---:|---:|"
+            echo "| File | Total | Translated | Untranslated | Fuzzy |"
+            echo "|---|---:|---:|---:|---:|"
 
             while IFS= read -r file; do
-              total=$(msgattrib --no-obsolete --no-fuzzy "$file" | grep -cE '^msgid ".+"' || true)
-              untranslated=$(msgattrib --untranslated --no-obsolete --no-fuzzy "$file" | grep -cE '^msgid ".+"' || true)
-              fuzzy=$(msgattrib --only-fuzzy --no-obsolete "$file" | grep -cE '^msgid ".+"' || true)
+              out="$(LC_ALL=C msgfmt --statistics --output-file=/dev/null "$file" 2>&1)"
+              translated="$(stat "$out" translated)"
+              untranslated="$(stat "$out" untranslated)"
+              fuzzy="$(stat "$out" fuzzy)"
+              total=$((translated + untranslated + fuzzy))
 
               rel="${file#"${PKG_DIR}"/po/}"
-              echo "| \`${rel}\` | ${total} | ${untranslated} | ${fuzzy} |"
+              echo "| \`${rel}\` | ${total} | ${translated} | ${untranslated} | ${fuzzy} |"
             done < .i18n/files
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -346,12 +380,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          rm -rf .i18n/update
-          mkdir -p .i18n/update/po/templates
+          rm -rf i18n-update
+          mkdir -p i18n-update/po/templates
 
           if [ "$POT_CHANGED" = "true" ]; then
             cp ".i18n/generated.pot" \
-              ".i18n/update/po/templates/${I18N_PREFIX}.pot"
+              "i18n-update/po/templates/${I18N_PREFIX}.pot"
           fi
 
           while IFS= read -r file; do
@@ -359,20 +393,20 @@ jobs:
             work="po-work/${rel}"
 
             if [ -f ".i18n/diff/${rel}.diff" ]; then
-              mkdir -p ".i18n/update/po/$(dirname "$rel")"
-              cp "$work" ".i18n/update/po/${rel}"
+              mkdir -p "i18n-update/po/$(dirname "$rel")"
+              cp "$work" "i18n-update/po/${rel}"
             fi
           done < .i18n/files
 
           echo "i18n update artifact:"
-          find .i18n/update -type f -print | sort
+          find i18n-update -type f -print | sort
 
       - name: Upload i18n update
         if: steps.compare_pot.outputs.changed == 'true' || steps.compare_po.outputs.changed == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ env.I18N_PREFIX }}-i18n-update
-          path: .i18n/update/
+          path: i18n-update/
           if-no-files-found: error
           retention-days: 7
 

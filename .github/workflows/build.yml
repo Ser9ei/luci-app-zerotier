@@ -56,7 +56,6 @@ jobs:
         id: set
         env:
           SDK_VERSIONS: ${{ vars.CI_OPENWRT_SDK_VERSIONS }}
-          RELEASE: ${{ vars.CI_OPENWRT_RELEASE }}
           EVENT_NAME: ${{ github.event_name }}
           INPUT_OPENWRT_VERSION: ${{ inputs.openwrt_version }}
           INPUT_MODE: ${{ inputs.mode }}
@@ -70,6 +69,14 @@ jobs:
             # shellcheck disable=SC2206
             VERSIONS=($SDK_VERSIONS)
           fi
+
+          # Entries are interpolated into JSON below: allow only x.y.z or SNAPSHOT.
+          for v in "${VERSIONS[@]}"; do
+            if ! [[ "$v" =~ ^([0-9]+\.[0-9]+\.[0-9]+|SNAPSHOT)$ ]]; then
+              echo "::error::Invalid entry '${v}' in CI_OPENWRT_SDK_VERSIONS (expected e.g. 25.12.5 or SNAPSHOT)." >&2
+              exit 1
+            fi
+          done
 
           if [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "pull_request" ]; then
             SELECTED="last"
@@ -95,26 +102,10 @@ jobs:
             done
             MATRIX="{\"include\":[$(IFS=,; echo "${parts[*]}")]}"
           elif [ "$SELECTED" = "last" ]; then
-            if [ -z "${RELEASE// }" ]; then
-              echo "::error::CI_OPENWRT_RELEASE is empty" >&2
-              exit 1
-            fi
-
-            LAST=""
-            for v in "${VERSIONS[@]}"; do
-              line="${v%.*}"
-              if [ "$v" = "SNAPSHOT" ]; then
-                line="SNAPSHOT"
-              fi
-              if [ "$line" = "$RELEASE" ] || [ "$v" = "$RELEASE" ]; then
-                LAST="$v"
-              fi
-            done
-
-            if [ -z "$LAST" ]; then
-              echo "::error::No SDK pin for CI_OPENWRT_RELEASE=${RELEASE} in CI_OPENWRT_SDK_VERSIONS" >&2
-              exit 1
-            fi
+            # "last" = the newest numbered release in the list (version sort,
+            # list order does not matter); SNAPSHOT only if nothing else is listed.
+            LAST="$(printf '%s\n' "${VERSIONS[@]}" | { grep -v '^SNAPSHOT$' || true; } | sort -V | tail -n1)"
+            LAST="${LAST:-SNAPSHOT}"
 
             MATRIX="{\"include\":[$(build_entry "$LAST")]}"
           else
@@ -138,47 +129,55 @@ jobs:
     steps:
       - name: Validate package variables
         env:
-          CI_PACKAGE_NAME: ${{ vars.CI_PACKAGE_NAME }}
-          CI_PACKAGE_DIR: ${{ vars.CI_PACKAGE_DIR }}
-          CI_PACKAGE_I18N_PREFIX: ${{ vars.CI_PACKAGE_I18N_PREFIX }}
+          CI_PACKAGE: ${{ vars.CI_PACKAGE }}
+          CI_PACKAGE_PREFIX: ${{ vars.CI_PACKAGE_PREFIX }}
         run: |
           set -euo pipefail
 
-          name="${CI_PACKAGE_NAME:-}"
-          dir="${CI_PACKAGE_DIR:-}"
-          dir="${dir%/}"
-          prefix="${CI_PACKAGE_I18N_PREFIX:-}"
+          pkg="${CI_PACKAGE:-}"
+          prefix="${CI_PACKAGE_PREFIX:-}"
 
           fail=0
-          comp='[A-Za-z0-9][A-Za-z0-9._-]*'
-          check() {
-            local kind="$1" label="$2" value="$3" re
-            if [ "$kind" = path ]; then re="^${comp}(/${comp})*$"; else re="^${comp}$"; fi
-            if [ -z "$value" ]; then
-              echo "::error::GitHub Actions variable ${label} is not set."
+          if [ -z "$pkg" ]; then
+            echo "::error::GitHub Actions variable CI_PACKAGE is not set (e.g. zerotier)."
+            fail=1
+          elif ! [[ "$pkg" =~ ^[a-z0-9][a-z0-9._-]*$ ]]; then
+            echo "::error::CI_PACKAGE must be lowercase letters, digits, '.', '_', '-' (got '${pkg}')."
+            fail=1
+          fi
+
+          # The prefix selects the directory in the openwrt/luci tree.
+          # Add new package types here (and only here) when they appear.
+          case "$prefix" in
+            luci-app)   category="applications" ;;
+            luci-proto) category="protocols" ;;
+            luci-theme) category="themes" ;;
+            luci-mod)   category="modules" ;;
+            luci-lib)   category="libs" ;;
+            "")
+              echo "::error::GitHub Actions variable CI_PACKAGE_PREFIX is not set (e.g. luci-app)."
               fail=1
-            elif ! [[ "$value" =~ $re ]]; then
-              echo "::error::Variable ${label} must be a relative ${kind} of letters, digits, '.', '_', '-' (got '${value}')."
+              ;;
+            *)
+              echo "::error::Unsupported CI_PACKAGE_PREFIX '${prefix}' (supported: luci-app, luci-proto, luci-theme, luci-mod, luci-lib)."
               fail=1
-            fi
-          }
-          check name CI_PACKAGE_NAME "$name"
-          check path CI_PACKAGE_DIR "$dir"
-          check name CI_PACKAGE_I18N_PREFIX "$prefix"
+              ;;
+          esac
           [ "$fail" -eq 0 ] || exit 1
 
-          dir="${dir%/}"
-          if [ "$(basename "$dir")" != "$name" ]; then
-            dir="${dir}/${name}"
-          fi
+          # luci.mk names the translation package luci-i18n-<pkg>-<lang>
+          # and the template po/templates/<pkg>.pot.
+          name="${prefix}-${pkg}"
+          dir="${category}/${name}"
+          i18n="${pkg}"
 
           {
             echo "PKG_NAME=${name}"
             echo "PKG_DIR=${dir}"
-            echo "I18N_PREFIX=${prefix}"
+            echo "I18N_PREFIX=${i18n}"
           } >> "$GITHUB_ENV"
 
-          echo "PKG_NAME=${name} PKG_DIR=${dir} I18N_PREFIX=${prefix}"
+          echo "PKG_NAME=${name} PKG_DIR=${dir} I18N_PREFIX=${i18n}"
 
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -186,24 +185,42 @@ jobs:
       - name: Set up LuCI feed structure
         run: |
           set -euo pipefail
-          mkdir -p package
-          printf 'include $(TOPDIR)/feeds/luci/luci.mk\n' > package/luci.mk
           mkdir -p "feed/luci/${PKG_DIR}"
           printf 'include $(TOPDIR)/feeds/luci/luci.mk\n' > feed/luci/luci.mk
           rsync -av \
             --exclude='.git' \
             --exclude='feed' \
             --exclude='.github' \
+            --exclude='node_modules' \
+            --exclude='package.json' \
+            --exclude='package-lock.json' \
             ./ "feed/luci/${PKG_DIR}/"
 
       - name: Patch Makefile for fast build
         if: needs.prepare.outputs.mode == 'fast'
         run: |
           set -euo pipefail
+
           MF="feed/luci/${PKG_DIR}/Makefile"
+
           if grep -qE '^LUCI_DEPENDS[[:space:]]*[:?+]*=' "$MF"; then
-            sed -i '/^LUCI_DEPENDS[[:space:]]*[:?+]*=/d' "$MF"
-            echo "fast: removed LUCI_DEPENDS"
+            awk '
+              /^LUCI_DEPENDS[[:space:]]*[:?+]*=/ {
+                skip = /\\[[:space:]]*$/
+                next
+              }
+
+              skip {
+                skip = /\\[[:space:]]*$/
+                next
+              }
+
+              { print }
+            ' "$MF" > "${MF}.tmp"
+
+            mv "${MF}.tmp" "$MF"
+
+            echo "fast: removed complete LUCI_DEPENDS assignment"
           else
             echo "::warning::fast mode: expected LUCI_DEPENDS in Makefile, but none found — dependency not stripped"
           fi
@@ -268,3 +285,38 @@ jobs:
           path: upload/*
           if-no-files-found: error
           retention-days: 3
+
+      - name: Job summary
+        if: always()
+        run: |
+          set -euo pipefail
+          STATUS="${{ job.status }}"
+          case "$STATUS" in
+            success) ICON="✅" ;;
+            failure) ICON="❌" ;;
+            cancelled) ICON="⚠️" ;;
+            *) ICON="•" ;;
+          esac
+
+          {
+            echo "## Build ${{ matrix.version }}"
+            echo
+            echo "${ICON} **Result:** \`${STATUS}\`"
+            echo
+            echo "- **SDK pin:** \`${{ matrix.sdk }}\`"
+            echo "- **ARCH:** \`${{ env.ARCH }}\`"
+            echo "- **Mode:** \`${{ needs.prepare.outputs.mode }}\`"
+            echo "- **Artifact name:** \`${{ env.PKG_NAME }}-${{ matrix.version }}\`"
+            echo
+            echo "### Packages"
+            echo
+            if [ -d upload ] && [ -n "$(ls -A upload 2>/dev/null || true)" ]; then
+              echo "Packages from this job (download the workflow artifact above):"
+              echo
+              for f in upload/*; do
+                echo "- \`$(basename "$f")\`"
+              done
+            else
+              echo "_No packages collected._"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
