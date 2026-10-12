@@ -12,6 +12,10 @@
 #   ubus -S call luci.zerotier getNetworks
 #   ubus -S call luci.zerotier getPeers
 
+# shellcheck disable=SC2015
+# shellcheck disable=SC2166
+
+# shellcheck disable=SC1091
 . /usr/share/libubox/jshn.sh
 
 readonly LUCI_ZEROTIER_VERSION=dev
@@ -56,9 +60,8 @@ major_version_ge() { [ "${1%%.*}" -ge "${2%%.*}" ]; }
 get_system_features()
 {
 	local _dump distribution version _table _item _feat _min _result
-
 	_dump="$(ubus call system board 2>/dev/null)" || return 1
-	
+
 	json_init
 	json_load "$_dump" || { json_cleanup; echo ""; return 1; }
 	json_select release 2>/dev/null || { json_cleanup; echo ""; return 1; }
@@ -66,7 +69,7 @@ get_system_features()
 	json_select ..
 	json_cleanup
 
-	distribution="$(printf '%s' "$distribution" | tr 'A-Z' 'a-z')"
+	distribution="$(printf '%s' "$distribution" | tr '[:upper:]' '[:lower:]')"
 	case "$version" in
 		SNAPSHOT*|snapshot*) version="99" ;;
 		""|*[!0-9.]*) version="0" ;;
@@ -88,8 +91,8 @@ get_system_features()
 
 get_features()
 {
-	local _active _extra _item
-	local _official="$(get_system_features)"
+	local _active _extra _item _official
+	_official="$(get_system_features)"
 
 	for _item in $_official; do
 		[ -n "$_item" ] || continue
@@ -221,7 +224,8 @@ get_networks()
 		return 1
 	fi
 
-	local _dump="$("$ZEROTIER_CLI" -j listnetworks 2>/dev/null)"
+	local _dump
+	_dump="$("$ZEROTIER_CLI" -j listnetworks 2>/dev/null)"
 	if [ $? -ne 0 -o -z "$_dump" ]; then
 		json_error "Failed to get ZeroTier network list"
 		return 1
@@ -252,7 +256,7 @@ get_networks()
 	json_add_array "networks"
 	json_set_namespace "input"
 	local _index=1
-	local id name type status portDeviceName mac mtu assignedAddresses ip_address
+	local id name type status portDeviceName mac mtu ip_address
 	local _rx_bytes _tx_bytes
 	while json_is_a "$_index" object; do
 		json_select "$_index"
@@ -308,7 +312,8 @@ get_peers()
 		return 1
 	fi
 
-	local _dump="$("$ZEROTIER_CLI" -j listpeers 2>/dev/null)"
+	local _dump
+	_dump="$("$ZEROTIER_CLI" -j listpeers 2>/dev/null)"
 	if [ $? -ne 0 -o -z "$_dump" ]; then
 		json_error "Failed to get ZeroTier peer list"
 		return 1
@@ -344,7 +349,7 @@ get_peers()
 	while json_is_a "$_index" object; do
 		json_select "$_index"
 		json_get_vars address version role tunneled latency
-		[ "${version:--1.-1.-1}" = "-1.-1.-1" ] && unset version
+		[ ! "${version:--1.-1.-1}" = "-1.-1.-1" ] || unset version
 		[ "$latency" = "-1" ] && unset latency
 		[ "$tunneled" = "1" ] && link="RELAY" || link="DIRECT"
 
@@ -431,6 +436,7 @@ case "$1" in
 				json_load "$input"
 				json_get_var action "action"
 				json_cleanup
+				# shellcheck disable=SC2154
 				init_action "$action"
 				;;
 			getNetworks)

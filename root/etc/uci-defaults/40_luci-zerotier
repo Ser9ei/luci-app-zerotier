@@ -1,5 +1,28 @@
 #!/bin/sh
 
+MIN_IMMORTALWRT_MAJOR=23
+
+DISTRIB_ID=
+DISTRIB_RELEASE=
+
+# shellcheck disable=SC1091
+[ -r /etc/openwrt_release ] && . /etc/openwrt_release || exit 0
+
+case "$(printf '%s' "$DISTRIB_ID" | tr '[:upper:]' '[:lower:]')" in
+	immortalwrt) ;;
+	*) exit 0 ;;
+esac
+
+case "$DISTRIB_RELEASE" in
+	SNAPSHOT*|snapshot*|"") rel=99 ;;
+	*)
+		rel="${DISTRIB_RELEASE#"${DISTRIB_RELEASE%%[0-9]*}"}"
+		rel="${rel%%[!0-9]*}"
+		;;
+esac
+
+[ "$rel" -ge "${MIN_IMMORTALWRT_MAJOR%%.*}" ] || exit 0
+
 uci -q batch <<-EOF >/dev/null
 	delete ucitrack.@zerotier[-1]
 	commit ucitrack
@@ -8,5 +31,4 @@ uci -q batch <<-EOF >/dev/null
 	commit firewall
 EOF
 
-rm -f /tmp/luci-indexcache
 exit 0
