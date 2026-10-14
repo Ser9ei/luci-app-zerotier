@@ -35,6 +35,9 @@ fw_allow_masq:23.05
 "
 readonly EXTENDENT_FEATURES_OPENWRT="
 "
+readonly EXTENDENT_FEATURES_GENERAL="
+qr:23.05
+"
 
 log()
 {
@@ -57,9 +60,22 @@ json_error()
 
 major_version_ge() { [ "${1%%.*}" -ge "${2%%.*}" ]; }
 
+features_from_table()
+{
+	local _item _min _result
+	for _item in $1; do
+		[ -n "$_item" ] || continue
+		_min="${_item#*:}"
+		if major_version_ge "$2" "$_min"; then
+			_result="${_result:+$_result }${_item%%:*}"
+		fi
+	done
+	echo "$_result"
+}
+
 get_system_features()
 {
-	local _dump distribution version _table _item _feat _min _result
+	local _dump distribution version _table
 	_dump="$(ubus call system board 2>/dev/null)" || return 1
 
 	json_init
@@ -71,8 +87,12 @@ get_system_features()
 
 	distribution="$(printf '%s' "$distribution" | tr '[:upper:]' '[:lower:]')"
 	case "$version" in
-		SNAPSHOT*|snapshot*) version="99" ;;
-		""|*[!0-9.]*) version="0" ;;
+		SNAPSHOT*|snapshot*|"") version="99" ;;
+		*)
+			version="${version#"${version%%[0-9]*}"}"
+			version="${version%%[!0-9]*}"
+			version="${version:-0}"
+			;;
 	esac
 
 	case "$distribution" in
@@ -80,13 +100,7 @@ get_system_features()
 		*) _table="$EXTENDENT_FEATURES_OPENWRT" ;;
 	esac
 
-	for _item in $_table; do
-		[ -n "$_item" ] || continue
-		_feat="${_item%%:*}"
-		_min="${_item#*:}"
-		major_version_ge "$version" "$_min" && _result="${_result:+$_result }$_feat"
-	done
-	echo "$_result"
+	features_from_table "$_table $EXTENDENT_FEATURES_GENERAL" "$version"
 }
 
 get_features()
@@ -141,23 +155,14 @@ init_action()
 
 	local _result=0
 	case "$1" in
-		start)
-			"$INIT_FILE" start >/dev/null 2>&1 || _result=1
-			;;
-		stop)
-			"$INIT_FILE" stop >/dev/null 2>&1 || _result=1
-			;;
-		restart)
-			"$INIT_FILE" restart >/dev/null 2>&1 || _result=1
+		start|stop|restart|disable)
+			"$INIT_FILE" "$1" >/dev/null 2>&1 || _result=1
 			;;
 		enable)
 			"$INIT_FILE" enable >/dev/null 2>&1 || _result=1
 			if ! is_config_enabled; then
 				set_config_enabled || _result=1
 			fi
-			;;
-		disable)
-			"$INIT_FILE" disable >/dev/null 2>&1 || _result=1
 			;;
 		*)
 			log "Unsupported init action: $1" war
@@ -202,14 +207,23 @@ get_init_status()
 		return 1
 	fi
 
+	local _running=0
+	# zerotier-cli only answers while the daemon is up: do not spawn it otherwise.
+	if is_running; then
+		_running=1
+		local _node _networks
+		_node="$(get_node_info)"
+		_networks="$(get_networks_summary)"
+	fi
+
 	json_init
 	json_add_object "zerotier"
 
-	is_running && json_add_boolean "running" 1 || json_add_boolean "running" 0
+	json_add_boolean "running" "$_running"
 	is_init_enabled && json_add_boolean "enabled" 1 || json_add_boolean "enabled" 0
 	is_config_enabled && json_add_boolean "config_enabled" 1 || json_add_boolean "config_enabled" 0
-	json_add_string "node" "$(get_node_info)"
-	json_add_string "networks" "$(get_networks_summary)"
+	json_add_string "node" "$_node"
+	json_add_string "networks" "$_networks"
 
 	json_close_object
 	json_dump

@@ -35,26 +35,8 @@ function hasFeature(features, id) {
 	return Array.isArray(features) && features.indexOf(id) !== -1;
 }
 
-function formatBytes(bytes) {
-	if (bytes === null || bytes === undefined || bytes === '')
-		return '0 B';
-
-	const value = Number(bytes);
-	if (!Number.isFinite(value))
-		return '0 B';
-
-	const units = [ 'B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB' ];
-	let unit = 0;
-	let size = value;
-
-	while (size >= 1024 && unit < units.length - 1) {
-		size /= 1024;
-		unit++;
-	}
-
-	return unit === 0
-		? `${Math.round(size)} B`
-		: `${size.toFixed(1)} ${units[unit]}`;
+function hasNetworkId(id) {
+	return typeof id === 'string' && id.trim() !== '';
 }
 
 function validateAbsolutePath(section_id, value) {
@@ -70,47 +52,134 @@ function validateAbsolutePath(section_id, value) {
 	return true;
 }
 
-function setSaveActionsVisible(show) {
-	document.querySelectorAll('.cbi-page-actions').forEach(function(el) {
-		el.style.display = show ? '' : 'none';
-	});
+function showQRUnavailable() {
+	ui.showModal(_('QR code is not available'), [
+		E('p', {},
+			_('QR code generation requires the luci-lib-uqr package, which is not installed. Install it and try again.')),
+		E('div', { class: 'right' },
+			E('button', { class: 'btn cbi-button cbi-button-neutral', click: ui.hideModal }, _('Close'))
+		)
+	]);
+}
+
+function showNetworkQRCode(networkId) {
+	if (!hasNetworkId(networkId))
+		return;
+
+	const payload = 'https://joinzt.com/addnetwork?nwid=' +
+		encodeURIComponent(networkId) + '&v=1';
+
+	function openModal(uqr) {
+		const svg = uqr.renderSVG(payload, {
+			pixelSize: 4,
+			whiteColor: '#ffffff',
+			blackColor: '#000000'
+		});
+
+		const img = E('img', {
+			src: 'data:image/svg+xml,' + encodeURIComponent(svg),
+			alt: networkId,
+			style: 'display:block;width:220px;height:220px'
+		});
+
+		const code = E('div', {
+			style: 'display:inline-block;margin:1em auto;padding:12px;background:#fff;border-radius:4px;line-height:0'
+		}, [ img ]);
+
+		ui.showModal(_('Join ZeroTier'), [
+			E('div', { style: 'text-align:center' }, [
+				E('p', {}, _('Use your phone camera to join this ZeroTier network:')),
+				E('p', {
+					style: 'font-family:monospace;font-size:1.1em;margin:0.5em 0;word-break:break-all'
+				}, networkId),
+				code,
+				E('p', {
+					style: 'margin-top:1em;opacity:0.85;font-size:90%'
+				}, _('Only use this if it was sent from someone you trust.'))
+			]),
+			E('div', { class: 'right' },
+				E('button', { class: 'btn cbi-button cbi-button-neutral', click: ui.hideModal }, _('Close'))
+			)
+		]);
+	}
+
+	L.require('uqr').then(openModal, showQRUnavailable);
+}
+
+function makeQRButton(networkId, opts) {
+	opts = opts || {};
+
+	const id = networkId || '';
+
+	return E('button', {
+		class: opts.className || 'btn cbi-button cbi-button-action',
+		type: 'button',
+		title: _('Show QR code'),
+		style: opts.style || 'padding:0.1em 0.4em',
+		click: function(ev) {
+			ev.preventDefault();
+			ev.stopPropagation();
+
+			let cur = id;
+			if (typeof opts.getId === 'function')
+				cur = opts.getId() || '';
+
+			if (hasNetworkId(cur))
+				showNetworkQRCode(cur);
+		}
+	}, opts.label || _('QR'));
 }
 
 return view.extend({
+	addFooter() {
+		const footer = this.super('addFooter', []);
+		this.pageActions = footer.querySelector('.cbi-page-actions');
+		return footer;
+	},
+
+	setSaveActionsVisible(show) {
+		if (this.pageActions)
+			this.pageActions.style.display = show ? '' : 'none';
+	},
+
 	load() {
-		return Promise.all([
-			callGetFeatures().then(function(res) {
-				res = res || {};
-				const list = res.features;
-				return Array.isArray(list) ? list : [];
-			}).catch(function() {
-				return [];
-			}),
-			callGetNetworks().then(function(res) {
-				res = res || {};
-				const zerotier = res.zerotier || {};
-				const networks = zerotier.networks || [];
-				return Array.isArray(networks) ? networks : [];
-			}).catch(function(err) {
-				ui.addNotification(null, E('p', {},
-					_('Unable to get network info: %s.').format(err.message)));
-				return [];
-			})
-		]);
+		return callGetFeatures().then(function(res) {
+			res = res || {};
+			const list = res.features;
+			return Array.isArray(list) ? list : [];
+		}).catch(function() {
+			return [];
+		});
 	},
 
 	render_network(networkData, index, isLast) {
+		const qrOk = this.qrFeature === true;
 		const fields = [
 			[_('Network Name'), networkData.name],
-			[_('Network ID'), networkData.network_id],
+			[_('Network ID'), (function() {
+				const id = networkData.network_id || '';
+				if (!id)
+					return '';
+
+				const children = [
+					E('span', { style: 'font-family:monospace' }, id)
+				];
+
+				if (qrOk) {
+					children.push('\u00a0');
+					children.push(makeQRButton(id));
+				}
+
+				return E('span', {}, children);
+			})()],
 			[_('Network Device'), networkData.device_name],
 			[_('Type'), networkData.type],
 			[_('Status'), networkData.status],
 			[_('MAC Address'), networkData.mac],
 			[_('IP Address'), networkData.ip_address],
 			[_('MTU'), networkData.mtu],
-			[_('Received'), formatBytes(networkData.rx_bytes)],
-			[_('Sent'), formatBytes(networkData.tx_bytes)]
+			[_('Received'), '%1024mB'.format(networkData.rx_bytes ?? 0)],
+			[_('Sent'), '%1024mB'.format(networkData.tx_bytes ?? 0)]
 		];
 
 		const rows = fields.map(function(field) {
@@ -220,10 +289,11 @@ return view.extend({
 	},
 
 	render(data) {
-		const features = (data && data[0]) || [];
-		const networks = (data && data[1]) || [];
+		const features = Array.isArray(data) ? data : [];
+		this.qrFeature = hasFeature(features, 'qr');
 		const status = new zt.status();
 		const self = this;
+		const qrOk = this.qrFeature;
 		const m = new form.Map('zerotier');
 		let s, o;
 
@@ -242,7 +312,6 @@ return view.extend({
 				_('See documentation') +
 				'</a>'
 		);
-
 		o.value('/etc/zerotier.conf');
 		o.validate = validateAbsolutePath;
 
@@ -256,7 +325,7 @@ return view.extend({
 		o.depends({ 'config_path': '', '!reverse': true });
 
 		if (hasFeature(features, 'global_fw_allow_input')) {
-			o = s.option(form.Flag, 'fw_allow_input', _('Allow input traffic'),
+			s.option(form.Flag, 'fw_allow_input', _('Allow input traffic'),
 				_('Allow input traffic to the ZeroTier daemon.'));
 		}
 
@@ -264,7 +333,6 @@ return view.extend({
 		s.modaltitle = function(section_id) {
 			return section_id ? _('Network - %s').format(section_id) : _('New Network');
 		};
-
 		s.addremove = true;
 		s.rowcolors = true;
 		s.sortable = true;
@@ -282,14 +350,31 @@ return view.extend({
 				_('See documentation') +
 				'</a>'
 		);
-
 		o.rmempty = false;
 		o.width = '20%';
 		o.maxlength = 16;
-		o.validate = function(section_id, value) {
-			if (!/^[0-9a-fA-F]{16}$/.test(value))
-				return _('Must be exactly 16 hexadecimal characters.');
-			return true;
+		o.datatype = 'and(hexstring,rangelength(16,16))';
+
+		o.textvalue = function(section_id) {
+			const opt = this;
+			const id = this.cfgvalue(section_id) || '';
+			if (!hasNetworkId(id))
+				return '';
+
+			const children = [
+				E('span', { style: 'font-family:monospace' }, id)
+			];
+
+			if (qrOk) {
+				children.push('\u00a0');
+				children.push(makeQRButton(id, {
+					getId: function() {
+						return opt.cfgvalue(section_id) || id;
+					}
+				}));
+			}
+
+			return E('span', {}, children);
 		};
 
 		o = s.option(form.Flag, 'allow_managed', _('Allow managed IP/route'),
@@ -343,10 +428,8 @@ return view.extend({
 
 		const tabConfig = E('li', { 'class': 'cbi-tab', 'data-tab': 'config' },
 			E('a', { href: '#' }, _('Configuration')));
-
 		const tabNetworks = E('li', { 'class': 'cbi-tab-disabled', 'data-tab': 'networks' },
 			E('a', { href: '#' }, _('Networks Status')));
-
 		const tabPeers = E('li', { 'class': 'cbi-tab-disabled', 'data-tab': 'peers' },
 			E('a', { href: '#' }, _('Peers Status')));
 
@@ -366,14 +449,14 @@ return view.extend({
 			'data-tab': 'networks',
 			'data-tab-active': 'false',
 			'style': 'display:none'
-		}, [ this.renderNetworks(networks) ]);
+		}, [ E('div', {}, _('Loading…')) ]);
 
 		const panelPeers = E('div', {
 			'id': 'zerotier-peers',
 			'data-tab': 'peers',
 			'data-tab-active': 'false',
 			'style': 'display:none'
-		}, [ this.renderPeers([]) ]);
+		}, [ E('div', {}, _('Loading…')) ]);
 
 		function switchTab(name) {
 			const isConfig = (name === 'config');
@@ -392,7 +475,7 @@ return view.extend({
 			panelNetworks.style.display = isNetworks ? '' : 'none';
 			panelPeers.style.display = isPeers ? '' : 'none';
 
-			setSaveActionsVisible(isConfig);
+			self.setSaveActionsVisible(isConfig);
 
 			if (isNetworks)
 				self.refreshNetworks();
@@ -420,10 +503,6 @@ return view.extend({
 			m.render()
 		]).then(function(nodes) {
 			panelConfig.appendChild(nodes[1]);
-
-			requestAnimationFrame(function() {
-				setSaveActionsVisible(true);
-			});
 
 			document.addEventListener('zerotier-status-updated', function() {
 				self.refreshNetworks();

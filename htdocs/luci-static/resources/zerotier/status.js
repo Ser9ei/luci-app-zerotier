@@ -105,7 +105,7 @@ var status = baseclass.extend({
 			E('div', { class: 'cbi-value-field' }, _('Collecting data…'))
 		]);
 
-		const status = E('div', { class: 'cbi-value' }, [
+		const statusRow = E('div', { class: 'cbi-value' }, [
 			E('label', { class: 'cbi-value-title' }, _('Service Status')),
 			E('div', { class: 'cbi-value-field' }, _('Collecting data…'))
 		]);
@@ -118,13 +118,13 @@ var status = baseclass.extend({
 		const central = E('div', { class: 'cbi-value' }, [
 			E('label', { class: 'cbi-value-title' }, 'ZeroTier Central'),
 			E('div', { class: 'cbi-value-field' }, [
-				E('button', {
+				E('div', {}, E('button', {
 					class: 'btn cbi-button cbi-button-apply',
 					type: 'button',
 					click: function() {
 						window.open('https://my.zerotier.com/network', '_blank', 'noopener,noreferrer');
 					}
-				}, _('Open website')),
+				}, _('Open website'))),
 				E('div', { class: 'cbi-value-description' }, [
 					_('Create or manage your ZeroTier network and authorize clients.'),
 					' ',
@@ -138,6 +138,10 @@ var status = baseclass.extend({
 			])
 		]);
 
+		function notifyServiceChanged() {
+			document.dispatchEvent(new CustomEvent('zerotier-status-updated'));
+		}
+
 		function performServiceAction(action, expectedRunning, message) {
 			ui.showModal(null, [
 				E('p', { class: 'spinning' }, message)
@@ -147,7 +151,7 @@ var status = baseclass.extend({
 				.then(function() {
 					self.pollServiceStatus(expectedRunning, function() {
 						ui.hideModal();
-						self.getServiceStatus().then(updateStatus);
+						self.getServiceStatus().then(updateStatus).then(notifyServiceChanged);
 					});
 				})
 				.catch(function(err) {
@@ -159,7 +163,7 @@ var status = baseclass.extend({
 						),
 						'error'
 					);
-					self.getServiceStatus().then(updateStatus);
+					self.getServiceStatus().then(updateStatus).then(notifyServiceChanged);
 				});
 		}
 
@@ -249,23 +253,23 @@ var status = baseclass.extend({
 			}
 		}, _('Disable'));
 
-		const btnGap = E('span', {}, '\u00a0\u00a0');
-		const btnGapLong = E('span', {}, '\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0');
+		const gap = () => E('span', {}, '\u00a0\u00a0');
+		const gapLong = () => E('span', {}, '\u00a0'.repeat(8));
 		const buttonsTitle = E('label', {
 			class: 'cbi-value-title'
 		}, _('Service Control'));
 
-		const buttonsField = E('div', { class: 'cbi-value-field' }, [
+		const buttonsField = E('div', { class: 'cbi-value-field' }, E('div', {}, [
 			btnStart,
-			btnGap,
+			gap(),
 			btnRestart,
-			btnGap,
+			gap(),
 			btnStop,
-			btnGapLong,
+			gapLong(),
 			btnEnable,
-			btnGap,
+			gap(),
 			btnDisable
-		]);
+		]));
 
 		const buttonsRow = E('div', {
 			class: 'cbi-value'
@@ -283,7 +287,7 @@ var status = baseclass.extend({
 			const nodeInfo = res.node || '';
 			const networksInfo = res.networks || '';
 
-			status.lastElementChild.replaceChildren(
+			statusRow.lastElementChild.replaceChildren(
 				self.renderStatus(running, enabled, configEnabled)
 			);
 
@@ -299,8 +303,6 @@ var status = baseclass.extend({
 			btnStop.disabled = !running;
 			btnEnable.disabled = enabled && configEnabled;
 			btnDisable.disabled = !enabled || !configEnabled;
-
-			document.dispatchEvent(new CustomEvent('zerotier-status-updated'));
 		}
 
 		callGetVersion()
@@ -338,7 +340,7 @@ var status = baseclass.extend({
 		return E('div', {}, [
 			header,
 			version,
-			status,
+			statusRow,
 			node,
 			central,
 			buttonsRow
