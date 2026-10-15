@@ -31,7 +31,9 @@ const callGetVersion = rpc.declare({
 
 var status = baseclass.extend({
 	getServiceStatus() {
+		const self = this;
 		return callGetInitStatus().then(function(res) {
+			self._statusErrLogged = false;
 			const st = res?.zerotier || {};
 			return {
 				running: st.running === true,
@@ -39,6 +41,18 @@ var status = baseclass.extend({
 				configEnabled: st.config_enabled === true,
 				node: st.node || '',
 				networks: st.networks || ''
+			};
+		}).catch(function(err) {
+			if (!self._statusErrLogged) {
+				self._statusErrLogged = true;
+				console.debug('luci-app-zerotier getInitStatus:', err);
+			}
+			return {
+				running: false,
+				enabled: false,
+				configEnabled: false,
+				node: '',
+				networks: ''
 			};
 		});
 	},
@@ -307,15 +321,17 @@ var status = baseclass.extend({
 
 		callGetVersion()
 			.then(function(res) {
+				self._versionErrLogged = false;
 				const ver = res?.zerotier;
-				if (!ver)
-					return version.lastElementChild.textContent = _('Unknown');
-
+				if (!ver) {
+					version.lastElementChild.textContent = _('Unknown');
+					return;
+				}
 				version.lastElementChild.replaceChildren(
 					E('div', {}, [
 						E('div', {}, ('ZeroTier One - %s').format(ver.version || _('Unknown'))),
 						E('div', {}, [
-							_('LuCI app project - %s').format(ver.luci || _('Unknown')),
+							_('LuCI app - %s').format(ver.luci || _('Unknown')),
 							' (',
 							E('a', {
 								target: '_blank',
@@ -327,7 +343,11 @@ var status = baseclass.extend({
 					])
 				);
 			})
-			.catch(function() {
+			.catch(function(err) {
+				if (!self._versionErrLogged) {
+					self._versionErrLogged = true;
+					console.debug('luci-app-zerotier getVersion:', err);
+				}
 				version.lastElementChild.textContent = _('Unknown');
 			});
 

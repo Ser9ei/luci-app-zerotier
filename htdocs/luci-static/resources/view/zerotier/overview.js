@@ -72,8 +72,9 @@ function showNetworkQRCode(networkId) {
 	function openModal(uqr) {
 		const svg = uqr.renderSVG(payload, {
 			pixelSize: 4,
-			whiteColor: '#ffffff',
-			blackColor: '#000000'
+			whiteColor: 'white',
+			blackColor: 'black',
+			ecc: 'M',
 		});
 
 		const img = E('img', {
@@ -103,7 +104,12 @@ function showNetworkQRCode(networkId) {
 		]);
 	}
 
-	L.require('uqr').then(openModal, showQRUnavailable);
+	L.require('uqr').then(function(uqr) {
+		openModal(uqr);
+	}).catch(function(err) {
+		console.debug('luci-app-zerotier QR generation:', err);
+		showQRUnavailable();
+	});
 }
 
 function makeQRButton(networkId, opts) {
@@ -144,15 +150,17 @@ return view.extend({
 
 	load() {
 		return callGetFeatures().then(function(res) {
-			res = res || {};
-			const list = res.features;
-			return Array.isArray(list) ? list : [];
-		}).catch(function() {
+			const zt = res?.zerotier || {};
+			if (zt.error)
+				console.debug('luci-app-zerotier getFeatures:', zt.error);
+			return Array.isArray(zt.features) ? zt.features : [];
+		}).catch(function(err) {
+			console.debug('luci-app-zerotier getFeatures:', err);
 			return [];
 		});
 	},
 
-	render_network(networkData, index, isLast) {
+	render_network(networkData, index) {
 		const qrOk = this.qrFeature === true;
 		const fields = [
 			[_('Network Name'), networkData.name],
@@ -189,15 +197,10 @@ return view.extend({
 			]);
 		});
 
-		if (!isLast) {
-			rows.push(E('tr', { class: 'tr' }, [
-				E('td', { class: 'td', colspan: '2' }, '')
-			]));
-		}
-
 		return E('table', {
 			class: 'table',
-			style: index > 0 ? 'margin-top: 1em' : null
+			style: (index > 0 ? 'margin-top:1.25em;' : '') +
+			'border-bottom:1px solid var(--border-color-medium,#ddd);padding-bottom:0.75em'
 		}, rows);
 	},
 
@@ -206,7 +209,7 @@ return view.extend({
 			return E('div', {}, _('No networks.'));
 
 		const tables = data.map(function(networkData, index) {
-			return this.render_network(networkData, index, index === data.length - 1);
+			return this.render_network(networkData, index);
 		}, this);
 
 		return E('div', {}, [
@@ -254,38 +257,42 @@ return view.extend({
 
 	refreshNetworks() {
 		const container = document.getElementById('zerotier-networks');
-		if (!container)
-			return Promise.resolve();
-
-		if (container.offsetParent === null)
+		if (!container || container.offsetParent === null)
 			return Promise.resolve();
 
 		return callGetNetworks().then(L.bind(function(res) {
+			this._netErrLogged = false;
 			res = res || {};
 			const list = res.zerotier?.networks;
 			const data = Array.isArray(list) ? list : [];
 			const content = this.renderNetworks(data);
 			container.replaceChildren(content);
-		}, this)).catch(function() {
-		});
+		}, this)).catch(L.bind(function(err) {
+			if (!this._netErrLogged) {
+				this._netErrLogged = true;
+				console.debug('luci-app-zerotier getNetworks:', err);
+			}
+		}, this));
 	},
 
 	refreshPeers() {
 		const container = document.getElementById('zerotier-peers');
-		if (!container)
-			return Promise.resolve();
-
-		if (container.offsetParent === null)
+		if (!container || container.offsetParent === null)
 			return Promise.resolve();
 
 		return callGetPeers().then(L.bind(function(res) {
+			this._peerErrLogged = false;
 			res = res || {};
 			const list = res.zerotier?.peers;
 			const data = Array.isArray(list) ? list : [];
 			const content = this.renderPeers(data);
 			container.replaceChildren(content);
-		}, this)).catch(function() {
-		});
+		}, this)).catch(L.bind(function(err) {
+			if (!this._peerErrLogged) {
+				this._peerErrLogged = true;
+				console.debug('luci-app-zerotier getPeers:', err);
+			}
+		}, this));
 	},
 
 	render(data) {
@@ -504,10 +511,14 @@ return view.extend({
 		]).then(function(nodes) {
 			panelConfig.appendChild(nodes[1]);
 
-			document.addEventListener('zerotier-status-updated', function() {
-				self.refreshNetworks();
-				self.refreshPeers();
-			});
+			if (!self._statusHooked) {
+				self._statusHooked = true;
+				self._onStatusUpdated = function() {
+					self.refreshNetworks();
+					self.refreshPeers();
+				};
+				document.addEventListener('zerotier-status-updated', self._onStatusUpdated);
+			}
 
 			poll.add(function() {
 				self.refreshNetworks();

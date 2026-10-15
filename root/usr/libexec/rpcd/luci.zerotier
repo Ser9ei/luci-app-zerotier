@@ -26,16 +26,16 @@ readonly ZEROTIER_ONE="/usr/bin/zerotier-one"
 readonly ZEROTIER_CLI="/usr/bin/zerotier-cli"
 readonly LOG_TAG="rpcd:luci.zerotier"
 
-readonly EXTENDENT_FEATURES_IMMORTALWRT="
+readonly EXTENDED_FEATURES_IMMORTALWRT="
 global_fw_allow_input:23.05
 network_enabled:23.05
 fw_allow_input:23.05
 fw_allow_forward:23.05
 fw_allow_masq:23.05
 "
-readonly EXTENDENT_FEATURES_OPENWRT="
+readonly EXTENDED_FEATURES_OPENWRT="
 "
-readonly EXTENDENT_FEATURES_GENERAL="
+readonly EXTENDED_FEATURES_GENERAL="
 qr:23.05
 "
 
@@ -96,41 +96,68 @@ get_system_features()
 	esac
 
 	case "$distribution" in
-		immortalwrt) _table="$EXTENDENT_FEATURES_IMMORTALWRT" ;;
-		*) _table="$EXTENDENT_FEATURES_OPENWRT" ;;
+		immortalwrt) _table="$EXTENDED_FEATURES_IMMORTALWRT" ;;
+		*) _table="$EXTENDED_FEATURES_OPENWRT" ;;
 	esac
 
-	features_from_table "$_table $EXTENDENT_FEATURES_GENERAL" "$version"
+	features_from_table "$_table $EXTENDED_FEATURES_GENERAL" "$version"
+}
+
+feature_catalog() {
+	local _item _out=""
+	for _item in $EXTENDED_FEATURES_IMMORTALWRT $EXTENDED_FEATURES_OPENWRT $EXTENDED_FEATURES_GENERAL; do
+		[ -n "$_item" ] || continue
+		_item="${_item%%:*}"
+		case " ${_out} " in
+			*" ${_item} "*) ;;
+			*) _out="${_out:+$_out }$_item" ;;
+		esac
+	done
+	echo "$_out"
+}
+
+feature_in_list() {
+	case " $2 " in
+		*" $1 "*) return 0 ;;
+		*) return 1 ;;
+	esac
 }
 
 get_features()
 {
-	local _active _extra _item _official
+	local _active _extra _item _official _catalog _unknown
 	_official="$(get_system_features)"
+	_catalog="$(feature_catalog)"
 
 	for _item in $_official; do
 		[ -n "$_item" ] || continue
-		case " ${_active} " in
-			*" ${_item} "*) ;;
-			*) _active="${_active:+$_active }$_item" ;;
-		esac
+		feature_in_list "$_item" "$_active" || _active="${_active:+$_active }$_item"
 	done
 
 	_extra="$(uci -q -d ' ' get "${CONFIG}.global.features" 2>/dev/null)"
 	for _item in $_extra; do
 		[ -n "$_item" ] || continue
-		case " ${_active} " in
-			*" ${_item} "*) ;;
-			*) _active="${_active:+$_active }$_item" ;;
-		esac
+		if ! feature_in_list "$_item" "$_catalog"; then
+			_unknown="${_unknown:+$_unknown }$_item"
+			continue
+		fi
+		feature_in_list "$_item" "$_active" || _active="${_active:+$_active }$_item"
 	done
 
 	json_init
+	json_add_object "zerotier"
+
 	json_add_array "features"
 	for _item in $_active; do
 		[ -n "$_item" ] && json_add_string "" "$_item"
 	done
 	json_close_array
+
+	if [ -n "$_unknown" ]; then
+		json_add_string "error" "unknown features in the zerotier.global.features: ${_unknown}"
+	fi
+
+	json_close_object
 	json_dump
 	json_cleanup
 }

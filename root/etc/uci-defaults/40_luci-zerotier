@@ -2,10 +2,8 @@
 
 MIN_IMMORTALWRT_MAJOR=23
 
-DISTRIB_ID=
-DISTRIB_RELEASE=
-
 # shellcheck disable=SC1091
+
 [ -r /etc/openwrt_release ] && . /etc/openwrt_release || exit 0
 
 case "$(printf '%s' "$DISTRIB_ID" | tr '[:upper:]' '[:lower:]')" in
@@ -21,7 +19,7 @@ case "$DISTRIB_RELEASE" in
 		;;
 esac
 
-[ "$rel" -ge "${MIN_IMMORTALWRT_MAJOR%%.*}" ] || exit 0
+[ "${rel:-0}" -ge "${MIN_IMMORTALWRT_MAJOR%%.*}" ] || exit 0
 
 uci -q batch <<-EOF >/dev/null
 	delete ucitrack.@zerotier[-1]

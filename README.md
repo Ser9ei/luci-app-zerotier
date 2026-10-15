@@ -1,56 +1,91 @@
 # luci-app-zerotier
 
 LuCI application for configuring and managing ZeroTier on OpenWrt and ImmortalWrt.  
-Based on the package developed for the ImmortalWrt LuCI project.
+Based on the package originally developed for the ImmortalWrt LuCI project.
+
+## Table of Contents
+
+- [Compatibility](#compatibility)
+- [Features](#features)
+  - [Service control](#service-control)
+  - [QR codes (optional)](#qr-codes-optional)
+  - [ImmortalWrt-only options](#immortalwrt-only-options)
+  - [Overriding feature detection](#overriding-feature-detection)
+- [Interface](#interface)
+- [Installation](#installation)
+- [Credits & License](#credits--license)
 
 ## Compatibility
 
-One package for **OpenWrt** and **ImmortalWrt**.
+A single package supports both **OpenWrt** and **ImmortalWrt**.  
+Options available only in the ImmortalWrt ZeroTier package are shown in the UI only when the backend reports support for them.
 
-Options that exist only in the ImmortalWrt build of the ZeroTier package are shown in the UI only when the backend reports them.
+Supported releases:
 
 - **OpenWrt** 25.12 and 24.10 (and older)
 - **ImmortalWrt** 23.05 and newer
 
-## New Features
+## Features
 
-- Dedicated rpcd backend (luci.zerotier).
+- Dedicated `rpcd` backend (`luci.zerotier`).
 - **Service control** (start / stop / restart / enable / disable), with status:
-  - Running / Stopped, Enabled / Disabled (autostart)
-  - ZeroTier One version and LuCI app version
-  - Node information, networks summary (active / total)
-- Single overview page: status panel plus **Configuration**, **Networks Status**, and **Peers Status** tabs:
-  - **Networks Status** - joined networks from the ZeroTier service: network name, network ID, device, type, status, MAC address, IP address(es), MTU, received / sent traffic
-  - **Peers Status** - peers from the ZeroTier service: peer address, version, role, latency, link (DIRECT / RELAY), preferred path
-- Status widget on LuCI **Status -> Overview** (service, node, networks summary).
-- QR code to join a network from a phone (optional luci-lib-uqr package).
+  - Runtime: Running / Stopped
+  - Autostart: Enabled / Disabled
+  - ZeroTier One and LuCI application versions
+  - Node information and networks summary (active / total)
+- Single overview page with a status panel and three tabs:
+  - **Configuration** - Global settings and Network configuration
+  - **Networks Status** - joined networks from the ZeroTier service:
+    Network name, Network ID (with QR when available), device, type, status, MAC address, IP address(es), MTU, received / sent traffic
+  - **Peers Status** - peers from the ZeroTier service:
+    Peer address, version, role, latency, link (DIRECT / RELAY), preferred path
+- Status widget on **Status → Overview** (service status, node, networks summary).
+- QR codes for joining a network from a phone (optional `luci-lib-uqr` package).
 - Feature detection for OpenWrt vs ImmortalWrt (extra firewall / network options only when supported).
 
-### ImmortalWrt-only options
+### Service control
 
-| Feature id              | UI option                                                  |
-|-------------------------|------------------------------------------------------------|
-| `global_fw_allow_input` | Global configuration: Allow input traffic                  |
-| `network_enabled`       | Network configuration: Enable                              |
-| `fw_allow_input`        | Network configuration: Allow input                         |
-| `fw_allow_forward`      | Network configuration: Allow forward, Forward interfaces   |
-| `fw_allow_masq`         | Network configuration: Masquerading, Masquerade interfaces |
+The UI does **not** provide a checkbox for `zerotier.global.enabled`.
+Service runtime and autostart are managed through the standard init actions:
 
-These options are written to '/etc/config/zerotier', but they take effect only if the installed zerotier package understands them. The stock OpenWrt 'zerotier' init script does not have them.
+**Start / Stop / Restart / Enable / Disable**
+
+These correspond to the usual `/etc/init.d/zerotier` commands.
+
+The UCI option `zerotier.global.enabled` is retained for compatibility with the ZeroTier package.
+
+If the service is blocked by the configuration because `global.enabled` is not set to `1`:
+
+- The status line indicates that the service is disabled in the global configuration.
+- **Start** and **Restart** remain unavailable until the configuration block is cleared.
+- **Enable** enables init autostart and sets `zerotier.global.enabled='1'`, removing the configuration block.
 
 ### QR codes (optional)
 
-When the 'qr' feature is reported, a **QR** button is shown next to every Network ID, in the network list on the **Configuration** tab and on the **Networks Status** tab.
-It opens a QR code that lets a phone join the network (ZeroTier mobile app, 'joinzt.com' link).
+When the backend reports the `qr` feature, a **QR** button is shown next to each Network ID on the **Configuration** and **Networks Status** tabs.
 
-QR codes are generated by the optional luci-lib-uqr package. It is **not** installed automatically as a dependency of luci-app-zerotier and should be installed manually if this library is available for your OpenWrt (23.05 or newer).
-If it is missing, the button is still shown; clicking it displays a message that the library is not installed, and nothing else is affected.
+The QR code uses a `joinzt.com` link so a phone can join the network via the ZeroTier mobile app.  
+QR codes are generated by the optional **`luci-lib-uqr`** package. It is **not** installed automatically with `luci-app-zerotier`; install it manually when available (typically OpenWrt / ImmortalWrt **23.05 and newer**).  
+If `luci-lib-uqr` is missing, the button still appears; clicking it explains that the library is not installed.
+
+### ImmortalWrt-only options
+
+These options appear only when the backend reports support for them.
+
+| Feature ID | UI option |
+| --- | --- |
+| `global_fw_allow_input` | Global configuration: Allow input traffic |
+| `network_enabled` | Network configuration: Enable |
+| `fw_allow_input` | Network configuration: Allow input |
+| `fw_allow_forward` | Network configuration: Allow forward, Forward interfaces |
+| `fw_allow_masq` | Network configuration: Masquerading, Masquerade interfaces |
+
+They are written to `/etc/config/zerotier`, but take effect only if the installed ZeroTier package supports them. The stock OpenWrt `zerotier` init script does not.
 
 ### Overriding feature detection
 
-The app decides which options to show from the distribution and release.
-If you installed a ZeroTier package that supports the ImmortalWrt options on a system that is detected as plain OpenWrt (for example the package from 'immortalwrt/packages'), list the feature ids you want to see in the global section of '/etc/config/zerotier'.
-The example below enables all of them:
+Which options are shown depends on the detected distribution and release.  
+If your ZeroTier package supports ImmortalWrt-specific options but the system is detected as plain OpenWrt (for example a package from `immortalwrt/packages`), list the feature IDs you need under `zerotier.global.features`:
 
 ```sh
 uci add_list zerotier.global.features='global_fw_allow_input'
@@ -66,41 +101,49 @@ This list only controls what the UI shows; it does not add the functionality its
 
 ## Interface
 
+### Configuration
+
 ![Configuration](docs/screenshot1.png)
+
+### Networks Status
+
 ![Networks Status](docs/screenshot2.png)
+
+### Peers Status
+
 ![Peers Status](docs/screenshot3.png)
 
 ## Installation
 
-> **Notes:**
->
-> - ZeroTier package **1.16.2** or later is recommended
-> - The luci-lib-uqr package should be installed to enable QR codes
+> **Note**: ZeroTier package version **1.16.2 or later** is recommended.
 
-1. Download 'luci-app-zerotier' from the [Releases](https://github.com/Ser9ei/luci-app-zerotier/releases) page. Prefer the build for your OpenWrt (apk/ipk). The package is architecture-independent.
+1. Download `luci-app-zerotier` from the [Releases](https://github.com/Ser9ei/luci-app-zerotier/releases) page.
 
-2. Copy the file to the router and install it
+   Choose the package format appropriate for your OpenWrt release (`.apk` or `.ipk`). The package is architecture-independent.
 
-   OpenWrt 25.12 and newer (apk / .apk):
+2. Copy the downloaded package to your router and install it.
+
+   **OpenWrt 25.12 and newer (`apk` / `.apk`):**
 
    ```sh
    apk add --allow-untrusted --force-reinstall luci-app-zerotier-*.apk
    ```
 
-   OpenWrt legacy - 24.10 and older (opkg / .ipk):
+   **OpenWrt 24.10 and older (`opkg` / `.ipk`):**
 
    ```sh
    opkg install --force-reinstall luci-app-zerotier_*.ipk
    ```
-3. Refresh LuCI (or clear the browser cache), then open **Services → ZeroTier**.
 
-4. Optional: install luci-lib-uqr package to enable QR codes (see [QR codes](#qr-codes-optional)).
+3. Refresh LuCI or clear your browser cache, then open **Services → ZeroTier**.
+
+4. Optionally, install `luci-lib-uqr` to enable QR codes. See [QR codes (optional)](#qr-codes-optional) for details.
 
 ## Credits & License
 
-Thanks to the [ImmortalWrt LuCI](https://github.com/immortalwrt/luci) contributors who developed and maintained the original luci-app-zerotier package.
+Thanks to the [ImmortalWrt LuCI](https://github.com/immortalwrt/luci) contributors for developing and maintaining the original `luci-app-zerotier` package.
 
-Service control UI patterns were inspired by luci-app-pbr by [@stangri](https://github.com/stangri).
+Service control UI patterns were inspired by `luci-app-pbr` by [@stangri](https://github.com/stangri).
 
-Licensed under the GNU General Public License v3.0 only (GPL-3.0-only).  
+Licensed under the GNU General Public License v3.0 only (`GPL-3.0-only`).  
 Copyright notices and SPDX license identifiers are preserved from the original source files.
