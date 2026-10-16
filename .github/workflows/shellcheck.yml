@@ -81,6 +81,7 @@ jobs:
           echo "ShellCheck ${installed_version} installed and verified."
 
       - name: Run ShellCheck
+        id: check
         run: |
           set -euo pipefail
           mapfile -d '' -t SH_FILES < <(
@@ -91,26 +92,59 @@ jobs:
           )
 
           if [ "${#SH_FILES[@]}" -eq 0 ]; then
+            echo "files=0" >> "$GITHUB_OUTPUT"
             echo "No shell scripts found."
-            {
-              echo "## ShellCheck"
-              echo
-              echo "_No shell scripts found._"
-            } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
+          echo "files=${#SH_FILES[@]}" >> "$GITHUB_OUTPUT"
           echo "Checking ${#SH_FILES[@]} script(s):"
           printf '  %s\n' "${SH_FILES[@]}"
+
+          REPORT="${RUNNER_TEMP}/shellcheck.txt"
+          rc=0
+          shellcheck --shell=busybox "${SH_FILES[@]}" > "$REPORT" 2>&1 || rc=$?
+          cat "$REPORT" || true
+          echo "rc=${rc}" >> "$GITHUB_OUTPUT"
+          # keep report path for summary
+          echo "report=${REPORT}" >> "$GITHUB_OUTPUT"
+          exit "$rc"
+
+      - name: Job summary
+        if: always()
+        env:
+          FILES: ${{ steps.check.outputs.files }}
+          RC: ${{ steps.check.outputs.rc }}
+          REPORT: ${{ steps.check.outputs.report }}
+        run: |
+          set -euo pipefail
+          STATUS="${{ job.status }}"
+          case "$STATUS" in
+            success) ICON="✅" ;;
+            failure) ICON="❌" ;;
+            cancelled) ICON="⚠️" ;;
+            *) ICON="•" ;;
+          esac
 
           {
             echo "## ShellCheck"
             echo
-            echo "Checked **${#SH_FILES[@]}** file(s) (\`busybox\` dialect):"
+            echo "${ICON} **Result:** \`${STATUS}\`"
             echo
-            for f in "${SH_FILES[@]}"; do
-              echo "- \`$f\`"
-            done
+            if [ "${FILES:-0}" = "0" ]; then
+              echo "_No shell scripts found._"
+            else
+              echo "Checked **${FILES}** file(s) (\`busybox\` dialect)."
+              if [ "${RC:-0}" != "0" ] && [ -n "${REPORT:-}" ] && [ -s "$REPORT" ]; then
+                echo
+                echo "<details>"
+                echo "<summary>ShellCheck output</summary>"
+                echo
+                echo '```text'
+                tail -n 80 "$REPORT" | sed 's/```/` ` `/g' || true
+                echo '```'
+                echo
+                echo "</details>"
+              fi
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
-
-          shellcheck --shell=busybox "${SH_FILES[@]}"

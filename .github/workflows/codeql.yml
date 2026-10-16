@@ -57,3 +57,28 @@ jobs:
         uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         with:
           category: "/language:${{ matrix.language }}"
+
+      - name: Job summary
+        if: always()
+        run: |
+          set -euo pipefail
+          STATUS="${{ job.status }}"
+          case "$STATUS" in
+            success) ICON="✅" ;;
+            failure) ICON="❌" ;;
+            cancelled) ICON="⚠️" ;;
+            *) ICON="•" ;;
+          esac
+
+          {
+            echo "## CodeQL (${{ matrix.language }})"
+            echo
+            echo "${ICON} **Result:** \`${STATUS}\`"
+            echo
+            echo "- **Language:** \`${{ matrix.language }}\`"
+            echo "- **Config:** \`.github/codeql.config.yml\`"
+            if [ "$STATUS" = "success" ]; then
+              echo
+              echo "Findings (if any) are in the repository **Security** / code scanning alerts."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

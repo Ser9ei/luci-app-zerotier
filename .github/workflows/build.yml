@@ -22,7 +22,7 @@ on:
       mode:
         description: "Select build mode: normal or fast (skip functional package build dependency)"
         required: true
-        default: normal
+        default: fast
         type: choice
         options:
           - normal
