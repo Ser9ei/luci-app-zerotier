@@ -91,11 +91,6 @@ msgstr "Разрешить управляемые IP/маршруты"
 msgid "Client secret"
 msgstr "Секрет клиента"
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/overview.js:60
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/overview.js:102
-msgid "Close"
-msgstr "Закрыть"
-
 #: applications/luci-app-zerotier/htdocs/luci-static/resources/zerotier/status.js:119
 #: applications/luci-app-zerotier/htdocs/luci-static/resources/zerotier/status.js:124
 #: applications/luci-app-zerotier/htdocs/luci-static/resources/zerotier/status.js:129
@@ -145,6 +140,11 @@ msgstr "Отключено в глобальной конфигурации"
 msgid "Disabling ZeroTier service"
 msgstr "Отключение службы ZeroTier"
 
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/overview.js:60
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/overview.js:102
+msgid "Dismiss"
+msgstr "Закрыть"
+
 #: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/overview.js:349
 #: applications/luci-app-zerotier/htdocs/luci-static/resources/zerotier/status.js:256
 msgid "Enable"
@@ -189,7 +189,7 @@ msgstr "Предоставить доступ к конфигурации ZeroTi
 
 #: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/overview.js:187
 msgid "IP Address"
-msgstr "IP Адрес"
+msgstr "IP-адрес"
 
 #: applications/luci-app-zerotier/htdocs/luci-static/resources/view/status/include/81_zerotier.js:24
 msgid "Inactive"

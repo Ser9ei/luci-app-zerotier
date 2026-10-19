@@ -17,10 +17,11 @@ LUCI_URL:=https://github.com/Ser9ei/luci-app-zerotier/
 LUCI_DESCRIPTION:=Provides Web UI for ZeroTier Service.
 LUCI_DEPENDS:=+zerotier
 
-define Build/Prepare/$(PKG_NAME)
+define luci_zerotier_set_version
 	$(SED) 's|^readonly LUCI_ZEROTIER_VERSION=.*|readonly LUCI_ZEROTIER_VERSION="$(PKG_VERSION)"|' \
 		$(PKG_BUILD_DIR)/root/usr/libexec/rpcd/luci.zerotier
 endef
+Hooks/Prepare/Post += luci_zerotier_set_version
 
 include $(TOPDIR)/feeds/luci/luci.mk
 

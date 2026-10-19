@@ -80,11 +80,6 @@ msgstr ""
 msgid "Client secret"
 msgstr ""
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/overview.js:60
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/overview.js:102
-msgid "Close"
-msgstr ""
-
 #: applications/luci-app-zerotier/htdocs/luci-static/resources/zerotier/status.js:119
 #: applications/luci-app-zerotier/htdocs/luci-static/resources/zerotier/status.js:124
 #: applications/luci-app-zerotier/htdocs/luci-static/resources/zerotier/status.js:129
@@ -128,6 +123,11 @@ msgstr ""
 
 #: applications/luci-app-zerotier/htdocs/luci-static/resources/zerotier/status.js:265
 msgid "Disabling ZeroTier service"
+msgstr ""
+
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/overview.js:60
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/overview.js:102
+msgid "Dismiss"
 msgstr ""
 
 #: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/overview.js:349

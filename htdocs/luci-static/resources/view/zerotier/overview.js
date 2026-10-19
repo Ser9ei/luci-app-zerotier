@@ -57,7 +57,7 @@ function showQRUnavailable() {
 		E('p', {},
 			_('QR code generation requires the luci-lib-uqr package, which is not installed. Install it and try again.')),
 		E('div', { class: 'right' },
-			E('button', { class: 'btn cbi-button cbi-button-neutral', click: ui.hideModal }, _('Close'))
+			E('button', { class: 'btn cbi-button cbi-button-neutral', click: ui.hideModal }, _('Dismiss'))
 		)
 	]);
 }
@@ -99,7 +99,7 @@ function showNetworkQRCode(networkId) {
 				}, _('Only use this if it was sent from someone you trust.'))
 			]),
 			E('div', { class: 'right' },
-				E('button', { class: 'btn cbi-button cbi-button-neutral', click: ui.hideModal }, _('Close'))
+				E('button', { class: 'btn cbi-button cbi-button-neutral', click: ui.hideModal }, _('Dismiss'))
 			)
 		]);
 	}

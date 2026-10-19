@@ -40,7 +40,7 @@ msgstr "允许 ZeroTier 设置 IP 地址和路由（仅限本地/私有范围）
 #: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/overview.js:393
 msgid ""
 "Allow ZeroTier to set global/public/non-private IP addresses and routes."
-msgstr ""
+msgstr "允许 ZeroTier 设置全局/公共/非私有范围的 IP 和路由。"
 
 #: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/overview.js:397
 msgid "Allow ZeroTier to set the default route on the system."
@@ -86,11 +86,6 @@ msgstr "允许管理 IP/路由"
 msgid "Client secret"
 msgstr "客户端密钥"
 
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/overview.js:60
-#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/overview.js:102
-msgid "Close"
-msgstr "关闭"
-
 #: applications/luci-app-zerotier/htdocs/luci-static/resources/zerotier/status.js:119
 #: applications/luci-app-zerotier/htdocs/luci-static/resources/zerotier/status.js:124
 #: applications/luci-app-zerotier/htdocs/luci-static/resources/zerotier/status.js:129
@@ -117,7 +112,7 @@ msgstr "复制持久配置目录的内容到内存中，而不是链接它，以
 
 #: applications/luci-app-zerotier/htdocs/luci-static/resources/zerotier/status.js:143
 msgid "Create or manage your ZeroTier network and authorize clients."
-msgstr ""
+msgstr "创建或管理您的 ZeroTier 网络，并允许客户端接入。"
 
 #: applications/luci-app-zerotier/htdocs/luci-static/resources/zerotier/status.js:268
 msgid "Disable"
@@ -136,6 +131,11 @@ msgstr ""
 msgid "Disabling ZeroTier service"
 msgstr ""
 
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/overview.js:60
+#: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/overview.js:102
+msgid "Dismiss"
+msgstr "关闭"
+
 #: applications/luci-app-zerotier/htdocs/luci-static/resources/view/zerotier/overview.js:349
 #: applications/luci-app-zerotier/htdocs/luci-static/resources/zerotier/status.js:256
 msgid "Enable"
@@ -149,7 +149,7 @@ msgstr "为此网络的出站流量开启网络地址和端口转换（NAT 或 N
 
 #: applications/luci-app-zerotier/htdocs/luci-static/resources/zerotier/status.js:62
 msgid "Enabled"
-msgstr "启用"
+msgstr "已启用"
 
 #: applications/luci-app-zerotier/htdocs/luci-static/resources/zerotier/status.js:253
 msgid "Enabling ZeroTier service"
